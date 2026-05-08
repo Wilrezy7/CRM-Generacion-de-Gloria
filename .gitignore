@@ -1,0 +1,10 @@
+.env
+.env.local
+node_modules/
+.vs/
+docs/*.log
+outputs/
+scripts/__pycache__/
+.tools/
+server.out.log
+server.err.log
