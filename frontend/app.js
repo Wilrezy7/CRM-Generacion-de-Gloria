@@ -4,14 +4,14 @@ import htm from "https://esm.sh/htm@3";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const html = htm.bind(React.createElement);
-const apiBase = "/api";
+const apiBase = "https://crm-generacion-de-gloria.up.railway.app/api";
 
 const tabs = [
   { key: "dashboard", label: "Dashboard", roles: ["ADMIN", "ASISTENTE"] },
   { key: "youths", label: "Miembros", roles: ["ADMIN", "ASISTENTE"] },
   { key: "attendance", label: "Asistencia", roles: ["ADMIN", "ASISTENTE"] },
   { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "alerts", label: "Alertas", roles: ["ADMIN", "ASISTENTE"] },
+  { : "alerts", label: "Alertas", roles: ["ADMIN", "ASISTENTE"] },
   { key: "users", label: "Usuarios", roles: ["ADMIN"] }
 ];
 
