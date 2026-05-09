@@ -1,0 +1,247 @@
+{
+  "meta": {
+    "churchName": "Ministerio Juvenil Generacion de Gloria",
+    "createdAt": "2026-04-25T22:39:00.498Z",
+    "updatedAt": "2026-04-25T22:39:00.498Z"
+  },
+  "users": [
+    {
+      "id": "usr_admin_1",
+      "fullName": "Administrador General",
+      "email": "admin@gdg.local",
+      "passwordHash": "0a5bc3e342432f1bad92ffd51b785343ec72906cdba6a26131060b008e786656",
+      "role": "ADMIN",
+      "assignedYouthIds": [],
+      "active": true,
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "usr_asistente_1",
+      "fullName": "Sara Mendoza",
+      "email": "asistente@gdg.local",
+      "passwordHash": "27155f9102a9a8ab059c118e0cce657ce07a3cf01f44783b0699751e8b1f970d",
+      "role": "ASISTENTE",
+      "assignedYouthIds": [
+        "yth_1",
+        "yth_3",
+        "yth_5"
+      ],
+      "active": true,
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    }
+  ],
+  "youths": [
+    {
+      "id": "yth_1",
+      "fullName": "Daniel Perea",
+      "age": 18,
+      "phone": "3001112233",
+      "address": "Barrio San Miguel",
+      "joinDate": "2025-09-14",
+      "status": "activo",
+      "assignedUserId": "usr_asistente_1",
+      "notes": "Participa en alabanza.",
+      "createdAt": "2026-04-25T22:39:00.498Z",
+      "updatedAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "yth_2",
+      "fullName": "Laura Benitez",
+      "age": 20,
+      "phone": "3005559911",
+      "address": "Cra 18 #21-30",
+      "joinDate": "2025-08-02",
+      "status": "activo",
+      "assignedUserId": null,
+      "notes": "Lider en discipulado.",
+      "createdAt": "2026-04-25T22:39:00.498Z",
+      "updatedAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "yth_3",
+      "fullName": "Samuel Riascos",
+      "age": 16,
+      "phone": "3114458877",
+      "address": "Urbanizacion El Prado",
+      "joinDate": "2026-01-11",
+      "status": "activo",
+      "assignedUserId": "usr_asistente_1",
+      "notes": "",
+      "createdAt": "2026-04-25T22:39:00.498Z",
+      "updatedAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "yth_4",
+      "fullName": "Mileny Cuesta",
+      "age": 22,
+      "phone": "3157894412",
+      "address": "Calle 7 #14-80",
+      "joinDate": "2024-11-07",
+      "status": "inactivo",
+      "assignedUserId": null,
+      "notes": "Vive fuera de la ciudad por estudios.",
+      "createdAt": "2026-04-25T22:39:00.498Z",
+      "updatedAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "yth_5",
+      "fullName": "Juan Pablo Solis",
+      "age": 19,
+      "phone": "3019087766",
+      "address": "Villa Esperanza",
+      "joinDate": "2025-12-05",
+      "status": "activo",
+      "assignedUserId": "usr_asistente_1",
+      "notes": "",
+      "createdAt": "2026-04-25T22:39:00.498Z",
+      "updatedAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "yth_ji1gxgdt",
+      "fullName": "Ana Torres",
+      "age": 17,
+      "phone": "3000001111",
+      "address": "Calle 10",
+      "joinDate": "2026-04-20",
+      "status": "activo",
+      "assignedUserId": null,
+      "notes": "",
+      "createdAt": "2026-04-26T18:05:28.937Z",
+      "updatedAt": "2026-04-26T18:05:28.937Z"
+    }
+  ],
+  "attendanceSessions": [
+    {
+      "id": "att_1",
+      "title": "Servicio Juvenil",
+      "serviceType": "servicio",
+      "date": "2026-04-04",
+      "notes": "Reunion general del sabado",
+      "attendance": [
+        {
+          "youthId": "yth_1",
+          "present": true
+        },
+        {
+          "youthId": "yth_2",
+          "present": true
+        },
+        {
+          "youthId": "yth_3",
+          "present": false
+        },
+        {
+          "youthId": "yth_4",
+          "present": false
+        },
+        {
+          "youthId": "yth_5",
+          "present": false
+        }
+      ],
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "att_2",
+      "title": "Celula de Jovenes",
+      "serviceType": "celula",
+      "date": "2026-04-11",
+      "notes": "",
+      "attendance": [
+        {
+          "youthId": "yth_1",
+          "present": true
+        },
+        {
+          "youthId": "yth_2",
+          "present": true
+        },
+        {
+          "youthId": "yth_3",
+          "present": false
+        },
+        {
+          "youthId": "yth_4",
+          "present": false
+        },
+        {
+          "youthId": "yth_5",
+          "present": false
+        }
+      ],
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "att_3",
+      "title": "Servicio Juvenil",
+      "serviceType": "servicio",
+      "date": "2026-04-18",
+      "notes": "",
+      "attendance": [
+        {
+          "youthId": "yth_1",
+          "present": true
+        },
+        {
+          "youthId": "yth_2",
+          "present": false
+        },
+        {
+          "youthId": "yth_3",
+          "present": true
+        },
+        {
+          "youthId": "yth_4",
+          "present": false
+        },
+        {
+          "youthId": "yth_5",
+          "present": true
+        }
+      ],
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    }
+  ],
+  "interactions": [
+    {
+      "id": "int_1",
+      "youthId": "yth_3",
+      "type": "llamada",
+      "date": "2026-04-12",
+      "observations": "Se contacto a la madre para confirmar motivo de ausencia.",
+      "pastoralNotes": "Mostrar acompanamiento en area academica.",
+      "createdBy": "usr_asistente_1",
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    },
+    {
+      "id": "int_2",
+      "youthId": "yth_5",
+      "type": "visita",
+      "date": "2026-04-13",
+      "observations": "Visita breve en casa; buena disposicion.",
+      "pastoralNotes": "Invitar a equipo de bienvenida.",
+      "createdBy": "usr_admin_1",
+      "createdAt": "2026-04-25T22:39:00.498Z"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "alr_1",
+      "youthId": "yth_3",
+      "reason": "2 ausencias consecutivas",
+      "status": "pendiente",
+      "generatedAt": "2026-04-25T22:39:00.498Z",
+      "attendedAt": null,
+      "attendedBy": null
+    },
+    {
+      "id": "alr_2",
+      "youthId": "yth_5",
+      "reason": "2 ausencias consecutivas",
+      "status": "pendiente",
+      "generatedAt": "2026-04-25T22:39:00.498Z",
+      "attendedAt": null,
+      "attendedBy": null
+    }
+  ]
+}

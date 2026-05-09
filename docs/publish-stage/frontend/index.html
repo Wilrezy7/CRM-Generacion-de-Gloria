@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generacion de Gloria CRM</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/brand.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              heading: ["Manrope", "sans-serif"],
+              body: ["Plus Jakarta Sans", "sans-serif"]
+            },
+            colors: {
+              brand: {
+                50: "#f6f7f0",
+                100: "#ecefdc",
+                200: "#d7dfb7",
+                300: "#bcc98e",
+                400: "#9eb163",
+                500: "#84974a",
+                600: "#68783c",
+                700: "#4f5c31",
+                800: "#3d4829",
+                900: "#323c24"
+              },
+              ink: "#101828",
+              night: "#08111f",
+              sand: "#f8f5ef"
+            },
+            boxShadow: {
+              soft: "0 12px 40px rgba(16, 24, 40, 0.10)"
+            }
+          }
+        }
+      };
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="bg-sand text-slate-800 dark:bg-night dark:text-slate-100">
+    <div id="root"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

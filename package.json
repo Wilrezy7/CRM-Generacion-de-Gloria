@@ -1,0 +1,10 @@
+{
+  "name": "generacion-de-gloria-crm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node backend/src/server.js",
+    "start": "node backend/src/server.js"
+  }
+}
