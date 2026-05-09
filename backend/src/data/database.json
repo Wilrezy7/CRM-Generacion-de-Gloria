@@ -4,7 +4,32 @@
     "createdAt": "2026-04-25T22:39:00.498Z",
     "updatedAt": "2026-04-25T22:39:00.498Z"
   },
-  "users": [],
+  "users": [
+  {
+    "id": "usr_admin_1",
+    "fullName": "Administrador General",
+    "email": "admin@gdg.local",
+    "passwordHash": "0b14d501a594442a01c6859541bcb3e8f3e3f6c2f9e5f6a6de8f8d0c5b7f7c6a",
+    "role": "ADMIN",
+    "assignedYouthIds": [],
+    "active": true,
+    "createdAt": "2026-04-25T22:39:00.498Z"
+  },
+  {
+    "id": "usr_asistente_1",
+    "fullName": "Sara Mendoza",
+    "email": "asistente@gdg.local",
+    "passwordHash": "27155f9102a9a8ab059c118e0cce657ce07a3cf01f44783b0699751e8b1f970d",
+    "role": "ASISTENTE",
+    "assignedYouthIds": [
+      "yth_1",
+      "yth_3",
+      "yth_5"
+    ],
+    "active": true,
+    "createdAt": "2026-04-25T22:39:00.498Z"
+  }
+],
   "youths": [
     {
       "id": "yth_1",
