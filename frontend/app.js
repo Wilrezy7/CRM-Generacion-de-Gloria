@@ -11,7 +11,7 @@ const tabs = [
   { key: "youths", label: "Miembros", roles: ["ADMIN", "ASISTENTE"] },
   { key: "attendance", label: "Asistencia", roles: ["ADMIN", "ASISTENTE"] },
   { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "ASISTENTE"] },
-  { : "alerts", label: "Alertas", roles: ["ADMIN", "ASISTENTE"] },
+  { key: "alerts", label: "Alertas", roles: ["ADMIN", "ASISTENTE"] },
   { key: "users", label: "Usuarios", roles: ["ADMIN"] }
 ];
 
