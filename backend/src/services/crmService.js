@@ -206,7 +206,7 @@ const recalculateAlerts = (data) => {
 };
 
 export const sanitizeUser = (user) => {
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash, password_hash, ...safeUser } = user;
   return safeUser;
 };
 
@@ -268,7 +268,7 @@ export const login = async ({ email, password }) => {
     throw error;
   }
   const user = data.users.find((item) => item.email === String(email).toLowerCase());
-  if (!user || !comparePassword(String(password || ""), user.passwordHash)) {
+  if (   !user ||   !comparePassword(     String(password || ""),     user.passwordHash || user.password_hash   ) ) {
     const error = new Error("Credenciales invalidas.");
     error.status = 401;
     throw error;
