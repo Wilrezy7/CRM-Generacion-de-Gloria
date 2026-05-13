@@ -105,10 +105,10 @@ El selector de asignacion en Miembros ya no depende de usuarios manuales.
 
 Fuente del selector:
 
-- miembros activos cuyo `memberRole` es `Mentor`
+- miembros activos cuyo `memberRole` es `Pastor`, `Lider` o `Mentor`
 - con cuenta sincronizada automaticamente (`accountId`)
 
-Si un miembro pasa a `Mentor`, aparece como mentor asignable tras guardar. Si cambia a otro rol o queda inactivo, deja de aparecer y sus asignaciones se limpian al sincronizar.
+Si un miembro pasa a `Pastor`, `Lider` o `Mentor`, aparece como persona asignable para mentoreo tras guardar. Si cambia a otro rol o queda inactivo, deja de aparecer y sus asignaciones se limpian al sincronizar.
 
 ## Validacion backend y frontend
 

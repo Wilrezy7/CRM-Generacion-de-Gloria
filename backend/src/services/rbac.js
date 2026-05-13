@@ -183,4 +183,6 @@ export const canAccessYouth = (user, youth) => {
 };
 
 export const canBeAssignedAsMentor = (user) =>
-  normalizeSystemRole(user?.role) === SYSTEM_ROLES.MENTOR && user?.active !== false;
+  [SYSTEM_ROLES.PASTOR, SYSTEM_ROLES.LIDER, SYSTEM_ROLES.MENTOR].includes(
+    normalizeSystemRole(user?.role)
+  ) && user?.active !== false;

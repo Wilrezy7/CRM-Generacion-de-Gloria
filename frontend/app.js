@@ -362,7 +362,7 @@ const App = () => {
     () =>
       youths.filter(
         (youth) =>
-          youth.memberRole === "Mentor" &&
+          ["Pastor", "Lider", "Mentor"].includes(youth.memberRole) &&
           youth.status !== "inactivo" &&
           youth.accountId &&
           youth.id !== editingYouth?.id
