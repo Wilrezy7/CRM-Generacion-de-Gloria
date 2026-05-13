@@ -8,9 +8,23 @@ import {
   sortByDateDesc
 } from "../utils/helpers.js";
 import { comparePassword, hashPassword } from "../utils/security.js";
+import {
+  MEMBER_ROLES,
+  PERMISSIONS,
+  ROLE_LABELS,
+  canAccessAllMembers,
+  canAccessYouth,
+  canBeAssignedAsMentor,
+  canManageAssignments,
+  getRolePermissions,
+  normalizeMemberRole,
+  normalizeSystemRole,
+  requirePermission,
+  systemRoleFromMemberRole
+} from "./rbac.js";
 
 const youthVisibilityFilter = (user) => (youth) =>
-  user.role === "ADMIN" || youth.assignedUserId === user.id;
+  canAccessYouth(user, youth);
 
 const ensureYouthAccess = (user, youth) => {
   if (!youth) {
@@ -18,7 +32,7 @@ const ensureYouthAccess = (user, youth) => {
     error.status = 404;
     throw error;
   }
-  if (user.role === "ADMIN" || youth.assignedUserId === user.id) {
+  if (canAccessYouth(user, youth)) {
     return youth;
   }
   const error = new Error("No tienes acceso a este joven.");
@@ -26,13 +40,82 @@ const ensureYouthAccess = (user, youth) => {
   throw error;
 };
 
-const syncUserAssignments = (data) => {
+const ensurePermission = (user, permission, message) =>
+  requirePermission(user, permission, message);
+
+const defaultSyncedPasswordHash = () => hashPassword("Cambio123*");
+
+const syncUsersFromMembers = (data) => {
+  data.users = Array.isArray(data.users) ? data.users : [];
+  data.youths = Array.isArray(data.youths) ? data.youths : [];
+
+  data.users = data.users.map((user) => ({
+    assignedYouthIds: [],
+    active: true,
+    ...user,
+    role: normalizeSystemRole(user.role),
+    assignedYouthIds: Array.isArray(user.assignedYouthIds)
+      ? user.assignedYouthIds
+      : []
+  }));
+
+  const usersByMemberId = new Map(
+    data.users.filter((user) => user.memberId).map((user) => [user.memberId, user])
+  );
+  const usersByEmail = new Map(
+    data.users.filter((user) => user.email).map((user) => [user.email.toLowerCase(), user])
+  );
+
+  data.youths = data.youths.map((youth) => ({
+    ...youth,
+    memberRole: normalizeMemberRole(youth.memberRole || youth.rol || youth.role, MEMBER_ROLES.MIEMBRO)
+  }));
+
+  for (const youth of data.youths) {
+    const email = normalizeText(youth.email).toLowerCase();
+    if (!email) continue;
+
+    const role = systemRoleFromMemberRole(youth.memberRole);
+    let account = usersByMemberId.get(youth.id) || usersByEmail.get(email);
+
+    if (!account) {
+      account = {
+        id: createId("usr"),
+        passwordHash: defaultSyncedPasswordHash(),
+        createdAt: nowIso(),
+        assignedYouthIds: []
+      };
+      data.users.push(account);
+    }
+
+    account.memberId = youth.id;
+    account.fullName = youth.fullName;
+    account.email = email;
+    account.role = role;
+    account.memberRole = youth.memberRole;
+    account.active = youth.status !== "inactivo";
+    account.passwordHash = account.passwordHash || defaultSyncedPasswordHash();
+
+    usersByMemberId.set(youth.id, account);
+    usersByEmail.set(email, account);
+  }
+
+  const memberIds = new Set(data.youths.map((youth) => youth.id));
+  data.users = data.users.map((user) =>
+    user.memberId && !memberIds.has(user.memberId)
+      ? { ...user, active: false, assignedYouthIds: [] }
+      : user
+  );
+
   const assignedByUser = new Map(data.users.map((user) => [user.id, []]));
   const validUserIds = new Set(data.users.map((user) => user.id));
+  const assignableMentorIds = new Set(
+    data.users.filter(canBeAssignedAsMentor).map((user) => user.id)
+  );
 
   data.youths = data.youths.map((youth) => {
     if (!youth.assignedUserId) return youth;
-    if (!validUserIds.has(youth.assignedUserId)) {
+    if (!validUserIds.has(youth.assignedUserId) || !assignableMentorIds.has(youth.assignedUserId)) {
       return { ...youth, assignedUserId: null };
     }
     assignedByUser.get(youth.assignedUserId).push(youth.id);
@@ -41,6 +124,7 @@ const syncUserAssignments = (data) => {
 
   data.users = data.users.map((user) => ({
     ...user,
+    role: normalizeSystemRole(user.role),
     assignedYouthIds: assignedByUser.get(user.id) || []
   }));
 };
@@ -51,6 +135,19 @@ const sanitizeUserWithAssignments = (data, user) => ({
     .filter((youth) => youth.assignedUserId === user.id)
     .map((youth) => youth.id)
 });
+
+const serializeYouth = (data, youth) => {
+  const account = data.users.find((user) => user.memberId === youth.id) || null;
+  const assignedMentor = youth.assignedUserId
+    ? data.users.find((user) => user.id === youth.assignedUserId) || null
+    : null;
+  return {
+    ...youth,
+    accountId: account?.id || null,
+    accountRole: account?.role || null,
+    assignedMentor: assignedMentor ? sanitizeUser(assignedMentor) : null
+  };
+};
 
 const escapeXml = (value) =>
   String(value ?? "")
@@ -84,21 +181,7 @@ const validateYouthPayload = (payload) => {
     error.status = 400;
     throw error;
   }
-  const roleMap = {
-    miembro: "Miembro",
-    lider: "Lider",
-    "co_lider": "Lider",
-    colider: "Lider",
-    mentor: "Mentor",
-    diacono: "Diacono"
-  };
-  const normalizedRoleKey = memberRole
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-  const normalizedRole = roleMap[normalizedRoleKey];
+  const normalizedRole = normalizeMemberRole(memberRole);
   if (!normalizedRole) {
     const error = new Error("Rol ministerial no valido.");
     error.status = 400;
@@ -139,8 +222,8 @@ const validateYouthPayload = (payload) => {
 const validateUserPayload = (payload) => {
   const fullName = normalizeText(payload.fullName);
   const email = normalizeText(payload.email).toLowerCase();
-  const role = normalizeText(payload.role).toUpperCase();
-  if (!fullName || !email || !["ADMIN", "ASISTENTE"].includes(role)) {
+  const role = normalizeSystemRole(payload.role, null);
+  if (!fullName || !email || !role) {
     const error = new Error("Datos de usuario invalidos.");
     error.status = 400;
     throw error;
@@ -206,8 +289,14 @@ const recalculateAlerts = (data) => {
 };
 
 export const sanitizeUser = (user) => {
-  const { passwordHash, password_hash, ...safeUser } = user;
-  return safeUser;
+  const { passwordHash, ...safeUser } = user;
+  const role = normalizeSystemRole(safeUser.role);
+  return {
+    ...safeUser,
+    role,
+    roleLabel: ROLE_LABELS[role] || role,
+    permissions: getRolePermissions(role)
+  };
 };
 
 export const getSetupStatus = async () => {
@@ -245,6 +334,7 @@ export const bootstrapSystem = async (payload) => {
     email,
     passwordHash: hashPassword(password),
     role: "ADMIN",
+    memberRole: MEMBER_ROLES.ADMIN,
     assignedYouthIds: [],
     active: true,
     createdAt: nowIso()
@@ -262,13 +352,15 @@ export const bootstrapSystem = async (payload) => {
 
 export const login = async ({ email, password }) => {
   const data = await readDb();
+  syncUsersFromMembers(data);
+  await writeDb(data);
   if (!data.users.length) {
     const error = new Error("El sistema aun no ha sido configurado.");
     error.status = 403;
     throw error;
   }
   const user = data.users.find((item) => item.email === String(email).toLowerCase());
-  if (   !user ||   !comparePassword(     String(password || ""),     user.passwordHash || user.password_hash   ) ) {
+  if (!user || !comparePassword(String(password || ""), user.passwordHash)) {
     const error = new Error("Credenciales invalidas.");
     error.status = 401;
     throw error;
@@ -283,6 +375,7 @@ export const login = async ({ email, password }) => {
 
 export const getDashboard = async (user) => {
   const data = await readDb();
+  ensurePermission(user, PERMISSIONS.DASHBOARD_VIEW);
   const visibleYouths = data.youths.filter(youthVisibilityFilter(user));
   const visibleIds = new Set(visibleYouths.map((item) => item.id));
   const recentInteractions = sortByDateDesc(
@@ -343,6 +436,7 @@ export const getDashboard = async (user) => {
 
 export const listYouths = async (user, query) => {
   const data = await readDb();
+  ensurePermission(user, PERMISSIONS.MEMBERS_VIEW);
   const search = normalizeText(query.search).toLowerCase();
   const status = normalizeText(query.status).toLowerCase();
   const assignedUserId = normalizeText(query.assignedUserId);
@@ -358,10 +452,12 @@ export const listYouths = async (user, query) => {
         .toLowerCase()
         .includes(search);
     })
+    .map((item) => serializeYouth(data, item))
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
 };
 
 export const createYouth = async (user, payload) => {
+  ensurePermission(user, PERMISSIONS.MEMBERS_CREATE, "No tienes permiso para crear miembros.");
   const data = await readDb();
   const record = {
     id: createId("yth"),
@@ -369,16 +465,17 @@ export const createYouth = async (user, payload) => {
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
-  if (user.role === "ASISTENTE") {
+  if (!canManageAssignments(user)) {
     record.assignedUserId = user.id;
   }
   data.youths.push(record);
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
-  return record;
+  return serializeYouth(data, record);
 };
 
 export const updateYouth = async (user, youthId, payload) => {
+  ensurePermission(user, PERMISSIONS.MEMBERS_UPDATE, "No tienes permiso para editar miembros.");
   const data = await readDb();
   const index = data.youths.findIndex((item) => item.id === youthId);
   const current = ensureYouthAccess(user, data.youths[index]);
@@ -387,21 +484,17 @@ export const updateYouth = async (user, youthId, payload) => {
     ...validateYouthPayload({ ...current, ...payload }),
     updatedAt: nowIso()
   };
-  if (user.role === "ASISTENTE") {
+  if (!canManageAssignments(user) && next.id !== user.memberId) {
     next.assignedUserId = user.id;
   }
   data.youths[index] = next;
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
-  return next;
+  return serializeYouth(data, data.youths[index]);
 };
 
 export const deleteYouth = async (user, youthId) => {
-  if (user.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede eliminar jovenes.");
-    error.status = 403;
-    throw error;
-  }
+  ensurePermission(user, PERMISSIONS.MEMBERS_DELETE, "Solo el administrador puede eliminar miembros.");
   const data = await readDb();
   const youth = data.youths.find((item) => item.id === youthId);
   ensureYouthAccess(user, youth);
@@ -412,13 +505,14 @@ export const deleteYouth = async (user, youthId) => {
   }));
   data.interactions = data.interactions.filter((item) => item.youthId !== youthId);
   data.alerts = data.alerts.filter((item) => item.youthId !== youthId);
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
   return true;
 };
 
 export const listAttendance = async (user) => {
   const data = await readDb();
+  ensurePermission(user, PERMISSIONS.ATTENDANCE_VIEW);
   const visibleIds = new Set(
     data.youths.filter(youthVisibilityFilter(user)).map((item) => item.id)
   );
@@ -434,6 +528,7 @@ export const listAttendance = async (user) => {
 };
 
 export const createAttendanceSession = async (user, payload) => {
+  ensurePermission(user, PERMISSIONS.ATTENDANCE_CREATE, "No tienes permiso para registrar asistencia.");
   const data = await readDb();
   const title = normalizeText(payload.title);
   const date = normalizeText(payload.date);
@@ -496,11 +591,12 @@ export const getYouthTimeline = async (user, youthId) => {
     data.alerts.filter((item) => item.youthId === youthId),
     "generatedAt"
   );
-  return { youth, attendanceHistory, interactions, alerts };
+  return { youth: serializeYouth(data, youth), attendanceHistory, interactions, alerts };
 };
 
 export const listInteractions = async (user) => {
   const data = await readDb();
+  ensurePermission(user, PERMISSIONS.INTERACTIONS_VIEW);
   const visibleIds = new Set(
     data.youths.filter(youthVisibilityFilter(user)).map((item) => item.id)
   );
@@ -509,13 +605,16 @@ export const listInteractions = async (user) => {
       .filter((item) => visibleIds.has(item.youthId))
       .map((item) => ({
         ...item,
-        youth: data.youths.find((youth) => youth.id === item.youthId) || null
+        youth: data.youths.find((youth) => youth.id === item.youthId)
+          ? serializeYouth(data, data.youths.find((youth) => youth.id === item.youthId))
+          : null
       })),
     "date"
   );
 };
 
 export const createInteraction = async (user, payload) => {
+  ensurePermission(user, PERMISSIONS.INTERACTIONS_CREATE, "No tienes permiso para registrar seguimientos.");
   const data = await readDb();
   const youth = ensureYouthAccess(
     user,
@@ -545,6 +644,7 @@ export const createInteraction = async (user, payload) => {
 
 export const listAlerts = async (user) => {
   const data = await readDb();
+  ensurePermission(user, PERMISSIONS.ALERTS_VIEW);
   const visibleIds = new Set(
     data.youths.filter(youthVisibilityFilter(user)).map((item) => item.id)
   );
@@ -553,13 +653,16 @@ export const listAlerts = async (user) => {
       .filter((item) => visibleIds.has(item.youthId))
       .map((item) => ({
         ...item,
-        youth: data.youths.find((youth) => youth.id === item.youthId) || null
+        youth: data.youths.find((youth) => youth.id === item.youthId)
+          ? serializeYouth(data, data.youths.find((youth) => youth.id === item.youthId))
+          : null
       })),
     "generatedAt"
   );
 };
 
 export const attendAlert = async (user, alertId) => {
+  ensurePermission(user, PERMISSIONS.ALERTS_ATTEND, "No tienes permiso para atender alertas.");
   const data = await readDb();
   const index = data.alerts.findIndex((item) => item.id === alertId);
   const alert = data.alerts[index];
@@ -580,22 +683,15 @@ export const attendAlert = async (user, alertId) => {
 };
 
 export const listUsers = async (user) => {
-  if (user.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede ver usuarios.");
-    error.status = 403;
-    throw error;
-  }
+  ensurePermission(user, PERMISSIONS.USERS_VIEW, "Solo el administrador puede ver usuarios.");
   const data = await readDb();
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
+  await writeDb(data);
   return data.users.map((item) => sanitizeUserWithAssignments(data, item));
 };
 
 export const createUser = async (user, payload) => {
-  if (user.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede crear usuarios.");
-    error.status = 403;
-    throw error;
-  }
+  ensurePermission(user, PERMISSIONS.USERS_MANAGE, "Solo el administrador puede crear usuarios.");
   const data = await readDb();
   const sanitized = validateUserPayload(payload);
   if (data.users.some((item) => item.email === sanitized.email)) {
@@ -615,17 +711,13 @@ export const createUser = async (user, payload) => {
       ? { ...youth, assignedUserId: created.id }
       : youth
   );
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
   return sanitizeUserWithAssignments(data, created);
 };
 
 export const updateUser = async (user, userId, payload) => {
-  if (user.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede editar usuarios.");
-    error.status = 403;
-    throw error;
-  }
+  ensurePermission(user, PERMISSIONS.USERS_MANAGE, "Solo el administrador puede editar usuarios.");
   const data = await readDb();
   const index = data.users.findIndex((item) => item.id === userId);
   if (index === -1) {
@@ -652,17 +744,13 @@ export const updateUser = async (user, userId, payload) => {
     }
     return youth;
   });
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
   return sanitizeUserWithAssignments(data, data.users[index]);
 };
 
 export const deleteUser = async (user, userId) => {
-  if (user.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede eliminar usuarios.");
-    error.status = 403;
-    throw error;
-  }
+  ensurePermission(user, PERMISSIONS.USERS_MANAGE, "Solo el administrador puede eliminar usuarios.");
   const data = await readDb();
   const target = data.users.find((item) => item.id === userId);
   if (!target) {
@@ -670,8 +758,8 @@ export const deleteUser = async (user, userId) => {
     error.status = 404;
     throw error;
   }
-  if (target.role === "ADMIN") {
-    const admins = data.users.filter((item) => item.role === "ADMIN");
+  if (normalizeSystemRole(target.role) === "ADMIN") {
+    const admins = data.users.filter((item) => normalizeSystemRole(item.role) === "ADMIN");
     if (admins.length === 1) {
       const error = new Error("No puedes eliminar el ultimo administrador.");
       error.status = 400;
@@ -682,12 +770,13 @@ export const deleteUser = async (user, userId) => {
   data.youths = data.youths.map((youth) =>
     youth.assignedUserId === userId ? { ...youth, assignedUserId: null } : youth
   );
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
   return true;
 };
 
 export const exportYouthsExcelXml = async (user) => {
+  ensurePermission(user, PERMISSIONS.REPORTS_EXPORT, "No tienes permiso para exportar reportes.");
   const youths = await listYouths(user, {});
   const rows = youths
     .map(
@@ -728,11 +817,7 @@ export const exportYouthsExcelXml = async (user) => {
 };
 
 export const importYouthsFromCsv = async (user, payload) => {
-  if (user.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede importar base de jovenes.");
-    error.status = 403;
-    throw error;
-  }
+  ensurePermission(user, PERMISSIONS.MEMBERS_IMPORT, "No tienes permiso para importar miembros.");
   const csv = String(payload.csv || "");
   const lines = csv.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) {
@@ -798,7 +883,9 @@ export const importYouthsFromCsv = async (user, payload) => {
         status: row.estado || row.status,
         notes: row.notas || row.notes,
         assignedUserId: findAssignedUserId(
-          row.correo_asistente_asignado ||
+          row.correo_mentor_asignado ||
+            row.mentor_asignado ||
+            row.correo_asistente_asignado ||
             row.asistente_asignado ||
             row.assigned_assistant_email ||
             row.assigned_user_email
@@ -819,7 +906,7 @@ export const importYouthsFromCsv = async (user, payload) => {
     updatedAt: nowIso()
   }));
   data.youths.push(...created);
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
   return created;
 };
@@ -827,10 +914,8 @@ export const importYouthsFromCsv = async (user, payload) => {
 export const importStructuredMembers = async (payload, options = {}) => {
   const { bypassAdminCheck = false } = options;
   const data = await readDb();
-  if (!bypassAdminCheck && options.user?.role !== "ADMIN") {
-    const error = new Error("Solo el administrador puede importar miembros.");
-    error.status = 403;
-    throw error;
+  if (!bypassAdminCheck) {
+    ensurePermission(options.user, PERMISSIONS.MEMBERS_IMPORT, "No tienes permiso para importar miembros.");
   }
   const source = Array.isArray(payload.members) ? payload.members : [];
   if (!source.length) {
@@ -849,7 +934,7 @@ export const importStructuredMembers = async (payload, options = {}) => {
   data.attendanceSessions = [];
   data.interactions = [];
   data.alerts = [];
-  syncUserAssignments(data);
+  syncUsersFromMembers(data);
   await writeDb(data);
-  return created;
+  return created.map((member) => serializeYouth(data, member));
 };

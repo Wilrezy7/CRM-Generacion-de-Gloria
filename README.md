@@ -6,7 +6,7 @@ Sistema CRM web para el Ministerio Juvenil "Generacion de Gloria" enfocado en:
 - control de asistencia
 - seguimiento pastoral
 - alertas por ausencias consecutivas
-- usuarios con roles `ADMIN` y `ASISTENTE`
+- RBAC dinamico sincronizado desde el rol ministerial de cada miembro
 - dashboard con metricas visuales
 
 ## Stack implementado
@@ -14,7 +14,7 @@ Sistema CRM web para el Ministerio Juvenil "Generacion de Gloria" enfocado en:
 - Frontend: React 18 servido como SPA sin bundler local
 - UI: TailwindCSS por CDN, modo claro/oscuro, layout responsive
 - Backend: Node.js con API REST modular
-- Seguridad: autenticacion por token estilo JWT y proteccion por roles
+- Seguridad: autenticacion por token estilo JWT, RBAC centralizado y proteccion por permisos
 - Persistencia: Supabase como almacenamiento remoto principal
 
 ## Estructura
@@ -66,8 +66,15 @@ package.json
 
 ### 5. Usuarios y roles
 
-- `ADMIN`: acceso total, manejo de usuarios, eliminacion y asignaciones
-- `ASISTENTE`: solo jovenes asignados, asistencia y seguimiento
+El modulo Miembros es la fuente principal de roles:
+
+- `Administrador`
+- `Pastor`
+- `Lider`
+- `Mentor`
+- `Miembro`
+
+Los permisos reales se documentan en [docs/rbac.md](docs/rbac.md). Los usuarios se sincronizan automaticamente desde miembros con correo, y los mentores asignables salen de miembros activos con rol `Mentor`.
 
 ### 6. Importacion y exportacion
 
@@ -93,7 +100,7 @@ Columnas soportadas para importacion de jovenes:
 - Admin:
   - correo: `admin@gdg.local`
   - contrasena: `Admin123*`
-- Asistente:
+- Mentor demo:
   - correo: `asistente@gdg.local`
   - contrasena: `Asistente123*`
 

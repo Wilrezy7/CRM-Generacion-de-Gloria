@@ -7,18 +7,21 @@ const html = htm.bind(React.createElement);
 const apiBase = "https://crm-generacion-de-gloria.up.railway.app/api";
 
 const tabs = [
-  { key: "dashboard", label: "Dashboard", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "youths", label: "Miembros", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "attendance", label: "Asistencia", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "alerts", label: "Alertas", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "users", label: "Usuarios", roles: ["ADMIN"] }
+  { key: "dashboard", label: "Dashboard", permission: "dashboard:view" },
+  { key: "youths", label: "Miembros", permission: "members:view" },
+  { key: "attendance", label: "Asistencia", permission: "attendance:view" },
+  { key: "interactions", label: "Seguimiento", permission: "interactions:view" },
+  { key: "alerts", label: "Alertas", permission: "alerts:view" },
+  { key: "users", label: "Usuarios", permission: "users:view" }
 ];
 
 const tokenKey = "gdg_crm_token";
 const themeKey = "gdg_crm_theme";
 
 const classNames = (...values) => values.filter(Boolean).join(" ");
+
+const hasPermission = (user, permission) =>
+  Boolean(user?.permissions?.includes(permission));
 
 const normalizeHeader = (value) =>
   String(value || "")
@@ -32,12 +35,16 @@ const normalizeHeader = (value) =>
 const normalizeMemberRole = (value) => {
   const normalized = normalizeHeader(value);
   const map = {
+    admin: "Administrador",
+    administrador: "Administrador",
+    administradora: "Administrador",
+    pastor: "Pastor",
+    pastora: "Pastor",
     miembro: "Miembro",
     lider: "Lider",
     co_lider: "Lider",
     colider: "Lider",
-    mentor: "Mentor",
-    diacono: "Diacono"
+    mentor: "Mentor"
   };
   return map[normalized] || "Miembro";
 };
@@ -205,11 +212,15 @@ const badgeClasses = {
   pendiente: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   atendida: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   ADMIN: "bg-brand-500/15 text-brand-800 dark:text-brand-300",
-  ASISTENTE: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  PASTOR: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
+  LIDER: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  MENTOR: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  MIEMBRO: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+  Administrador: "bg-brand-500/15 text-brand-800 dark:text-brand-300",
+  Pastor: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
   Miembro: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   Lider: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  Mentor: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  Diacono: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+  Mentor: "bg-sky-500/15 text-sky-700 dark:text-sky-300"
 };
 
 const StatCard = ({ label, value, accent, detail }) => html`
@@ -343,8 +354,20 @@ const App = () => {
   const [importFile, setImportFile] = useState(null);
 
   const availableTabs = useMemo(
-    () => tabs.filter((tab) => user && tab.roles.includes(user.role)),
+    () => tabs.filter((tab) => hasPermission(user, tab.permission)),
     [user]
+  );
+
+  const mentorOptions = useMemo(
+    () =>
+      youths.filter(
+        (youth) =>
+          youth.memberRole === "Mentor" &&
+          youth.status !== "inactivo" &&
+          youth.accountId &&
+          youth.id !== editingYouth?.id
+      ),
+    [youths, editingYouth]
   );
 
   const showMessage = (message) => {
@@ -375,7 +398,7 @@ const App = () => {
   };
 
   const loadUsers = async (authToken = token) => {
-    if (user?.role === "ADMIN") {
+    if (hasPermission(user, "users:view")) {
       setUsers(await request("/users", { token: authToken }));
     }
   };
@@ -394,7 +417,7 @@ const App = () => {
         loadInteractions(authToken),
         loadAlerts(authToken)
       ]);
-      if (me.user.role === "ADMIN") {
+      if (hasPermission(me.user, "users:view")) {
         setUsers(await request("/users", { token: authToken }));
       }
       setError("");
@@ -433,7 +456,7 @@ const App = () => {
       loadAttendance(),
       loadInteractions(),
       loadAlerts(),
-      user?.role === "ADMIN" ? loadUsers() : Promise.resolve()
+      hasPermission(user, "users:view") ? loadUsers() : Promise.resolve()
     ]);
   };
 
@@ -728,7 +751,7 @@ const App = () => {
             <div className="grid grid-cols-3 gap-4">
               ${[
                 ["Alertas activas", "Detecta 2 ausencias consecutivas"],
-                ["Roles seguros", "Admin y asistentes con permisos claros"],
+                ["Roles seguros", "Permisos reales por rol ministerial"],
                 ["Exportacion", "Base de jovenes lista para Excel"]
               ].map(
                 ([title, text]) => html`
@@ -823,7 +846,7 @@ const App = () => {
             <div className="mt-8 rounded-3xl bg-ink px-4 py-5 text-white dark:bg-white dark:text-ink">
               <p className="text-sm text-slate-300 dark:text-slate-600">Sesion activa</p>
               <p className="mt-2 font-heading text-xl font-extrabold">${user.fullName}</p>
-              <span className=${classNames("mt-3 inline-flex rounded-full px-3 py-1 text-xs font-bold", badgeClasses[user.role])}>${user.role}</span>
+              <span className=${classNames("mt-3 inline-flex rounded-full px-3 py-1 text-xs font-bold", badgeClasses[user.role])}>${user.roleLabel || user.role}</span>
               ${systemInfo?.storage &&
               html`
                 <div className="mt-4 rounded-2xl bg-white/10 px-3 py-3 text-xs text-slate-200 dark:bg-slate-900 dark:text-slate-300">
@@ -978,13 +1001,17 @@ const App = () => {
                     <option value="activo">Activos</option>
                     <option value="inactivo">Inactivos</option>
                   </select>
+                  ${hasPermission(user, "members:create") && html`
                   <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${() => { setEditingYouth(null); setShowYouthModal(true); }}>
                     Nuevo joven
                   </button>
+                  `}
+                  ${hasPermission(user, "reports:export") && html`
                   <button className="rounded-2xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white" onClick=${exportYouths}>
                     Exportar
                   </button>
-                  ${user.role === "ADMIN" &&
+                  `}
+                  ${hasPermission(user, "members:import") &&
                   html`<button className="rounded-2xl bg-slate-200 px-4 py-3 text-sm font-semibold dark:bg-slate-800" onClick=${() => setShowImportModal(true)}>Importar</button>`}
                 </div>
               </div>
@@ -1020,8 +1047,9 @@ const App = () => {
                                 <td className="px-4 py-4">
                                   <div className="flex flex-wrap gap-2">
                                     <button className="rounded-xl bg-slate-200 px-3 py-2 font-semibold dark:bg-slate-800" onClick=${() => openTimeline(youth.id)}>Historial</button>
-                                    <button className="rounded-xl bg-brand-500 px-3 py-2 font-semibold text-white" onClick=${() => { setEditingYouth(youth); setShowYouthModal(true); }}>Editar</button>
-                                    ${user.role === "ADMIN" &&
+                                    ${hasPermission(user, "members:update") &&
+                                    html`<button className="rounded-xl bg-brand-500 px-3 py-2 font-semibold text-white" onClick=${() => { setEditingYouth(youth); setShowYouthModal(true); }}>Editar</button>`}
+                                    ${hasPermission(user, "members:delete") &&
                                     html`<button className="rounded-xl bg-rose-500 px-3 py-2 font-semibold text-white" onClick=${() => removeYouth(youth.id)}>Eliminar</button>`}
                                   </div>
                                 </td>
@@ -1038,11 +1066,13 @@ const App = () => {
 
           ${activeTab === "attendance" && html`
             <section className="space-y-4">
+              ${hasPermission(user, "attendance:create") && html`
               <div className="flex justify-end">
                 <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${() => setShowAttendanceModal(true)}>
                   Nueva asistencia
                 </button>
               </div>
+              `}
               ${attendance.length
                 ? attendance.map(
                     (session) => {
@@ -1089,11 +1119,13 @@ const App = () => {
 
           ${activeTab === "interactions" && html`
             <section className="space-y-4">
+              ${hasPermission(user, "interactions:create") && html`
               <div className="flex justify-end">
                 <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${() => setShowInteractionModal(true)}>
                   Nuevo seguimiento
                 </button>
               </div>
+              `}
               ${interactions.length
                 ? interactions.map(
                     (item) => html`
@@ -1132,7 +1164,7 @@ const App = () => {
                             </div>
                             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">${alert.reason}</p>
                           </div>
-                          ${alert.status === "pendiente" &&
+                          ${alert.status === "pendiente" && hasPermission(user, "alerts:attend") &&
                           html`<button className="rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => markAlertAttended(alert.id)}>Marcar atendida</button>`}
                         </div>
                       </div>
@@ -1142,13 +1174,15 @@ const App = () => {
             </section>
           `}
 
-          ${activeTab === "users" && user.role === "ADMIN" && html`
+          ${activeTab === "users" && hasPermission(user, "users:view") && html`
             <section className="space-y-4">
+              ${hasPermission(user, "users:manage") && html`
               <div className="flex justify-end">
                 <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${() => { setEditingUser(null); setShowUserModal(true); }}>
                   Nuevo usuario
                 </button>
               </div>
+              `}
               ${users.length
                 ? users.map(
                     (account) => html`
@@ -1157,23 +1191,25 @@ const App = () => {
                           <div>
                              <div className="flex items-center gap-3">
                                <h3 className="font-heading text-lg font-bold">${account.fullName}</h3>
-                               <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[account.role])}>${account.role}</span>
+                               <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[account.role])}>${account.roleLabel || account.role}</span>
                                <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[account.active === false ? "inactivo" : "activo"])}>
                                  ${account.active === false ? "inactivo" : "activo"}
                                </span>
                              </div>
                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">${account.email}</p>
                            </div>
+                           ${hasPermission(user, "users:manage") && html`
                            <div className="flex gap-2">
                              <button className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => { setEditingUser(account); setShowUserModal(true); }}>Editar</button>
                              ${account.id !== user.id &&
                              html`<button className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => removeUser(account.id)}>Eliminar</button>`}
                            </div>
+                           `}
                         </div>
                       </div>
                     `
                   )
-                : html`<${EmptyState} title="Sin usuarios" detail="Crea asistentes y asigna jovenes desde este modulo." />`}
+                : html`<${EmptyState} title="Sin usuarios" detail="Los usuarios se sincronizan desde miembros con correo y rol ministerial." />`}
             </section>
           `}
         </main>
@@ -1191,23 +1227,22 @@ const App = () => {
             <option value="NO">NO</option>
           </${Select}>
           <${Select} label="Rol ministerial" name="memberRole" defaultValue=${editingYouth?.memberRole || "Miembro"}>
-            <option value="Miembro">Miembro</option>
+            <option value="Administrador">Administrador</option>
+            <option value="Pastor">Pastor</option>
             <option value="Lider">Lider</option>
             <option value="Mentor">Mentor</option>
-            <option value="Diacono">Diacono</option>
+            <option value="Miembro">Miembro</option>
           </${Select}>
           <${Input} label="Direccion" name="address" defaultValue=${editingYouth?.address || ""} />
           <${Select} label="Estado" name="status" defaultValue=${editingYouth?.status || "activo"}>
             <option value="activo">Activo</option>
             <option value="inactivo">Inactivo</option>
           </${Select}>
-          ${user.role === "ADMIN" &&
+          ${hasPermission(user, "members:assign") &&
           html`
-            <${Select} label="Asignar a" name="assignedUserId" defaultValue=${editingYouth?.assignedUserId || ""}>
+            <${Select} label="Asignar mentor" name="assignedUserId" defaultValue=${editingYouth?.assignedUserId || ""}>
               <option value="">Sin asignar</option>
-              ${users
-                .filter((item) => item.role === "ASISTENTE")
-                .map((item) => html`<option value=${item.id}>${item.fullName}</option>`)}
+              ${mentorOptions.map((mentor) => html`<option value=${mentor.accountId}>${mentor.fullName}</option>`)}
             </${Select}>
           `}
           <div className="md:col-span-2">
@@ -1280,9 +1315,12 @@ const App = () => {
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitUser}>
           <${Input} label="Nombre completo" name="fullName" defaultValue=${editingUser?.fullName || ""} required />
           <${Input} label="Correo" name="email" type="email" defaultValue=${editingUser?.email || ""} required />
-          <${Select} label="Rol" name="role" defaultValue=${editingUser?.role || "ASISTENTE"}>
-            <option value="ASISTENTE">Asistente</option>
-            <option value="ADMIN">Admin</option>
+          <${Select} label="Rol RBAC manual" name="role" defaultValue=${editingUser?.role || "MIEMBRO"}>
+            <option value="MIEMBRO">Miembro</option>
+            <option value="MENTOR">Mentor</option>
+            <option value="LIDER">Lider</option>
+            <option value="PASTOR">Pastor</option>
+            <option value="ADMIN">Administrador</option>
           </${Select}>
           <${Input} label="Contrasena" name="password" type="password" defaultValue=${editingUser ? "" : "Cambio123*"} placeholder=${editingUser ? "Dejar vacia para conservar" : ""} />
           <label className="md:col-span-2 flex items-center gap-3 rounded-2xl bg-slate-100/90 px-4 py-4 dark:bg-slate-900">
@@ -1335,12 +1373,12 @@ const App = () => {
         <form className="space-y-4" onSubmit=${importCsv}>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Formato CSV con encabezados: nombre_completo, cedula, celular, fecha_de_nacimiento,
-            correo, bautizados, rol, estado, notas, correo_asistente_asignado
+            correo, bautizados, rol, estado, notas, correo_mentor_asignado
           </p>
           <${Textarea}
             label="Contenido CSV"
             name="csv"
-            defaultValue=${"nombre_completo,cedula,celular,fecha_de_nacimiento,correo,bautizados,rol,estado,notas,correo_asistente_asignado\nAna Torres,1060000001,3000001111,2009-04-20,ana@example.com,SI,Miembro,activo,Se integra al equipo creativo,"}
+            defaultValue=${"nombre_completo,cedula,celular,fecha_de_nacimiento,correo,bautizados,rol,estado,notas,correo_mentor_asignado\nAna Torres,1060000001,3000001111,2009-04-20,ana@example.com,SI,Miembro,activo,Se integra al equipo creativo,"}
           />
           <div className="flex justify-end">
             <button className="rounded-2xl bg-brand-600 px-5 py-3 font-semibold text-white">Importar registros</button>

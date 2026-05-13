@@ -17,15 +17,17 @@ El sistema se divide en dos capas:
 
 ## Reglas de acceso
 
-- `ADMIN`:
-  - ve todos los jovenes
-  - gestiona usuarios
-  - elimina jovenes
-  - importa y exporta base de datos
-- `ASISTENTE`:
-  - solo ve jovenes asignados
-  - registra asistencia y seguimiento de sus asignados
-  - no accede a gestion global de usuarios
+El control de acceso esta centralizado en `backend/src/services/rbac.js`.
+
+La fuente principal de roles es el modulo Miembros:
+
+- `Administrador`
+- `Pastor`
+- `Lider`
+- `Mentor`
+- `Miembro`
+
+Los usuarios se sincronizan automaticamente desde miembros con correo. Cuando el rol de un miembro cambia, el usuario vinculado cambia sus permisos reales. Ver [rbac.md](rbac.md).
 
 ## Persistencia
 
