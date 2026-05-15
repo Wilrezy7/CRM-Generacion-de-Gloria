@@ -5,8 +5,11 @@ Sistema CRM web para el Ministerio Juvenil "Generacion de Gloria" enfocado en:
 - gestion de jovenes
 - control de asistencia
 - seguimiento pastoral
+- mentorias multiusuario
 - alertas por ausencias consecutivas
 - RBAC dinamico sincronizado desde el rol ministerial de cada miembro
+- auditoria de actividad
+- informes institucionales PDF/Excel
 - dashboard con metricas visuales
 
 ## Stack implementado
@@ -23,10 +26,14 @@ Sistema CRM web para el Ministerio Juvenil "Generacion de Gloria" enfocado en:
 backend/
   src/
     config/
+    controllers/
     data/
+    middleware/
     repositories/
+    routes/
     services/
     utils/
+    validators/
     server.js
 frontend/
   assets/
@@ -54,8 +61,8 @@ package.json
 
 ### 3. Seguimiento
 
-- registrar llamadas y visitas
-- notas pastorales
+- registrar visitas, llamadas, reuniones y notas pastorales
+- limitar visibilidad por asignacion mentor-miembro
 - actividad reciente en dashboard
 
 ### 4. Alertas
@@ -66,17 +73,40 @@ package.json
 
 ### 5. Usuarios y roles
 
-El modulo Miembros es la fuente principal de roles:
+Roles de acceso al sistema:
 
-- `Administrador`
+- `ADMIN`
+- `PASTOR`
+- `LIDER`
+- `MENTOR`
+- `SECRETARIA`
+
+Roles ministeriales del modulo Miembros:
+
 - `Pastor`
 - `Lider`
 - `Mentor`
 - `Miembro`
 
-Los permisos reales se documentan en [docs/rbac.md](docs/rbac.md). Los usuarios se sincronizan automaticamente desde miembros con correo, y los mentores asignables salen de miembros activos con rol `Mentor`.
+Los permisos reales se documentan en [docs/rbac.md](docs/rbac.md). Los usuarios se sincronizan automaticamente desde miembros con correo cuando su rol ministerial es `Pastor`, `Lider` o `Mentor`. La secretaria se gestiona como usuario administrativo manual con permisos de operacion e informes, sin acceso a auditoria ni permisos criticos.
 
-### 6. Importacion y exportacion
+### 6. Administracion y auditoria
+
+- CRUD de usuarios
+- reset de contrasenas temporales
+- activar/desactivar usuarios
+- reasignar miembros
+- auditoria en `activity_logs`
+
+### 7. Informes institucionales
+
+- dashboard estadistico por filtros
+- informes generales y de seguimientos
+- exportacion Excel compatible con hojas separadas
+- exportacion PDF institucional
+- trazabilidad de generacion y descargas
+
+### 8. Importacion y exportacion
 
 - exportacion a archivo `.xls` compatible con Excel
 - importacion de jovenes mediante CSV con encabezados

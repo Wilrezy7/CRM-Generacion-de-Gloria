@@ -19,6 +19,14 @@ export const sendText = (res, statusCode, payload, headers = {}) => {
   res.end(payload);
 };
 
+export const sendBuffer = (res, statusCode, payload, headers = {}) => {
+  res.writeHead(statusCode, {
+    "Access-Control-Allow-Origin": "*",
+    ...headers
+  });
+  res.end(payload);
+};
+
 export const notFound = (res) =>
   sendJson(res, 404, { message: "Recurso no encontrado." });
 

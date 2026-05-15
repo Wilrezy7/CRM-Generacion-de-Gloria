@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "https://esm.sh/react@18";
+import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18";
 import { createRoot } from "https://esm.sh/react-dom@18/client";
 import htm from "https://esm.sh/htm@3";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
@@ -11,8 +11,14 @@ const tabs = [
   { key: "youths", label: "Miembros", permission: "members:view" },
   { key: "attendance", label: "Asistencia", permission: "attendance:view" },
   { key: "interactions", label: "Seguimiento", permission: "interactions:view" },
+  { key: "visits", label: "Visitas", permission: "interactions:view" },
+  { key: "calls", label: "Llamadas", permission: "interactions:view" },
+  { key: "meetings", label: "Reuniones", permission: "interactions:view" },
+  { key: "notes", label: "Notas", permission: "interactions:view" },
   { key: "alerts", label: "Alertas", permission: "alerts:view" },
-  { key: "users", label: "Usuarios", permission: "users:view" }
+  { key: "reports", label: "Informes", permission: "reports:view" },
+  { key: "users", label: "Usuarios", permission: "users:view" },
+  { key: "activity", label: "Auditoria", permission: "users:view" }
 ];
 
 const tokenKey = "gdg_crm_token";
@@ -215,6 +221,7 @@ const badgeClasses = {
   PASTOR: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
   LIDER: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   MENTOR: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  SECRETARIA: "bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300",
   MIEMBRO: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   Administrador: "bg-brand-500/15 text-brand-800 dark:text-brand-300",
   Pastor: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
@@ -325,6 +332,63 @@ const EmptyState = ({ title, detail }) => html`
   </div>
 `;
 
+const MentorshipList = ({ items, emptyTitle, emptyDetail, renderDetail }) => html`
+  <section className="space-y-4">
+    ${items.length
+      ? items.map(
+          (item) => html`
+            <div className="panel rounded-2xl p-5 shadow-soft">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h3 className="font-heading text-lg font-bold">${item.youth?.fullName || "Miembro"}</h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">${formatDate(item.date || item.createdAt)}</p>
+                </div>
+                ${item.mentor && html`<span className="rounded-full bg-sky-500/15 px-3 py-1 text-xs font-bold text-sky-700 dark:text-sky-300">${item.mentor.fullName}</span>`}
+              </div>
+              <div className="mt-4 text-sm text-slate-700 dark:text-slate-200">${renderDetail(item)}</div>
+            </div>
+          `
+        )
+      : html`<${EmptyState} title=${emptyTitle} detail=${emptyDetail} />`}
+  </section>
+`;
+
+const ChartPanel = ({ title, labels, values }) => {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current || !window.Chart) return undefined;
+    const chart = new window.Chart(ref.current, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: title,
+            data: values,
+            backgroundColor: "#84974a",
+            borderRadius: 8
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+    return () => chart.destroy();
+  }, [title, labels.join("|"), values.join("|")]);
+  return html`
+    <div className="panel rounded-2xl p-5 shadow-soft">
+      <h3 className="font-heading text-lg font-bold">${title}</h3>
+      <div className="mt-4 h-72">
+        <canvas ref=${ref}></canvas>
+      </div>
+    </div>
+  `;
+};
+
 const App = () => {
   const [theme, setTheme] = useTheme();
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
@@ -337,8 +401,25 @@ const App = () => {
   const [youths, setYouths] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [interactions, setInteractions] = useState([]);
+  const [visits, setVisits] = useState([]);
+  const [calls, setCalls] = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [pastoralNotes, setPastoralNotes] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [users, setUsers] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [reportPreview, setReportPreview] = useState(null);
+  const [reportFilters, setReportFilters] = useState({
+    type: "general",
+    from: "",
+    to: "",
+    mentorId: "",
+    status: "",
+    baptized: "",
+    minAge: "",
+    maxAge: ""
+  });
   const [timeline, setTimeline] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -393,6 +474,20 @@ const App = () => {
     setInteractions(await request("/interactions", { token: authToken }));
   };
 
+  const loadMentorship = async (authToken = token, currentUser = user) => {
+    if (!hasPermission(currentUser, "interactions:view")) return;
+    const [nextVisits, nextCalls, nextMeetings, nextNotes] = await Promise.all([
+      request("/visits", { token: authToken }),
+      request("/calls", { token: authToken }),
+      request("/meetings", { token: authToken }),
+      request("/pastoral-notes", { token: authToken })
+    ]);
+    setVisits(nextVisits);
+    setCalls(nextCalls);
+    setMeetings(nextMeetings);
+    setPastoralNotes(nextNotes);
+  };
+
   const loadAlerts = async (authToken = token) => {
     setAlerts(await request("/alerts", { token: authToken }));
   };
@@ -400,6 +495,18 @@ const App = () => {
   const loadUsers = async (authToken = token) => {
     if (hasPermission(user, "users:view")) {
       setUsers(await request("/users", { token: authToken }));
+    }
+  };
+
+  const loadActivityLogs = async (authToken = token, currentUser = user) => {
+    if (hasPermission(currentUser, "users:view")) {
+      setActivityLogs(await request("/activity-logs", { token: authToken }));
+    }
+  };
+
+  const loadReports = async (authToken = token, currentUser = user) => {
+    if (hasPermission(currentUser, "reports:view")) {
+      setReports(await request("/reports", { token: authToken }));
     }
   };
 
@@ -415,10 +522,13 @@ const App = () => {
         loadYouths(authToken, filters),
         loadAttendance(authToken),
         loadInteractions(authToken),
-        loadAlerts(authToken)
+        loadMentorship(authToken, me.user),
+        loadAlerts(authToken),
+        loadReports(authToken, me.user)
       ]);
       if (hasPermission(me.user, "users:view")) {
         setUsers(await request("/users", { token: authToken }));
+        setActivityLogs(await request("/activity-logs", { token: authToken }));
       }
       setError("");
     } catch (err) {
@@ -455,8 +565,11 @@ const App = () => {
       loadYouths(),
       loadAttendance(),
       loadInteractions(),
+      loadMentorship(),
       loadAlerts(),
-      hasPermission(user, "users:view") ? loadUsers() : Promise.resolve()
+      hasPermission(user, "reports:view") ? loadReports() : Promise.resolve(),
+      hasPermission(user, "users:view") ? loadUsers() : Promise.resolve(),
+      hasPermission(user, "users:view") ? loadActivityLogs() : Promise.resolve()
     ]);
   };
 
@@ -654,6 +767,57 @@ const App = () => {
       await request(`/users/${id}`, { method: "DELETE", token });
       showMessage("Usuario eliminado.");
       await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const resetPassword = async (id) => {
+    try {
+      const result = await request(`/users/${id}/reset-password`, { method: "POST", token });
+      window.alert(`Contrasena temporal: ${result.temporaryPassword}`);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const submitReport = async (event) => {
+    event.preventDefault();
+    try {
+      const data = await request("/reports", {
+        method: "POST",
+        token,
+        body: {
+          type: reportFilters.type,
+          filters: reportFilters
+        }
+      });
+      setReportPreview(data);
+      await loadReports();
+      showMessage("Informe generado.");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const downloadReport = async (format) => {
+    try {
+      const params = new URLSearchParams(reportFilters).toString();
+      const response = await request(`/reports/export/${format}?${params}`, {
+        token,
+        raw: true
+      });
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") || "";
+      const filename = disposition.match(/filename=([^;]+)/)?.[1] || `informe.${format === "excel" ? "xls" : "pdf"}`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      await loadReports();
     } catch (err) {
       setError(err.message);
     }
@@ -1150,6 +1314,62 @@ const App = () => {
             </section>
           `}
 
+          ${activeTab === "visits" && html`
+            <${MentorshipList}
+              items=${visits}
+              emptyTitle="Sin visitas registradas"
+              emptyDetail="Las visitas pastorales y de mentoría aparecerán aquí."
+              renderDetail=${(item) => html`
+                <p>${item.observations || "Sin observaciones."}</p>
+                <p className="mt-2 text-slate-500 dark:text-slate-400">Ubicacion: ${item.location || "-"}</p>
+                <p className="mt-1 text-slate-500 dark:text-slate-400">Resultado: ${item.result || "-"}</p>
+              `}
+            />
+          `}
+
+          ${activeTab === "calls" && html`
+            <${MentorshipList}
+              items=${calls}
+              emptyTitle="Sin llamadas registradas"
+              emptyDetail="Las llamadas de seguimiento aparecerán aquí."
+              renderDetail=${(item) => html`
+                <p>${item.observations || "Sin observaciones."}</p>
+                <p className="mt-2 text-slate-500 dark:text-slate-400">Duracion: ${item.durationMinutes || 0} minutos</p>
+              `}
+            />
+          `}
+
+          ${activeTab === "meetings" && html`
+            <${MentorshipList}
+              items=${meetings}
+              emptyTitle="Sin reuniones registradas"
+              emptyDetail="Las reuniones de mentoría aparecerán aquí."
+              renderDetail=${(item) => html`
+                <p>${item.notes || "Sin notas."}</p>
+                <p className="mt-2 text-slate-500 dark:text-slate-400">Tipo: ${item.type || "mentoria"}</p>
+              `}
+            />
+          `}
+
+          ${activeTab === "notes" && html`
+            <section className="space-y-4">
+              ${pastoralNotes.length
+                ? pastoralNotes.map((item) => html`
+                  <div className="panel rounded-2xl p-5 shadow-soft">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="font-heading text-lg font-bold">${item.youth?.fullName || "Miembro"}</h3>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">${formatDate(item.createdAt)}</p>
+                      </div>
+                      <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">${item.private ? "Privada" : "Compartida"}</span>
+                    </div>
+                    <p className="mt-4 text-sm text-slate-700 dark:text-slate-200">${item.note}</p>
+                  </div>
+                `)
+                : html`<${EmptyState} title="Sin notas pastorales" detail="Las notas privadas autorizadas aparecerán aquí." />`}
+            </section>
+          `}
+
           ${activeTab === "alerts" && html`
             <section className="space-y-4">
               ${alerts.length
@@ -1171,6 +1391,96 @@ const App = () => {
                     `
                   )
                 : html`<${EmptyState} title="Sin alertas" detail="El sistema mostrara aqui las ausencias consecutivas detectadas." />`}
+            </section>
+          `}
+
+          ${activeTab === "reports" && hasPermission(user, "reports:view") && html`
+            <section className="space-y-6">
+              <div className="panel rounded-2xl p-5 shadow-soft">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="font-heading text-2xl font-extrabold">Informes institucionales</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Reportes ejecutivos con filtros, estadísticas y descargas trazables.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white" onClick=${() => downloadReport("excel")}>Descargar Excel</button>
+                    <button className="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white" onClick=${() => downloadReport("pdf")}>Descargar PDF</button>
+                  </div>
+                </div>
+                <form className="mt-6 grid gap-4 md:grid-cols-4" onSubmit=${submitReport}>
+                  <${Select} label="Tipo de informe" value=${reportFilters.type} onChange=${(event) => setReportFilters({ ...reportFilters, type: event.target.value })}>
+                    <option value="general">General de miembros</option>
+                    <option value="follow_up">Seguimientos</option>
+                  </${Select}>
+                  <${Input} label="Desde" type="date" value=${reportFilters.from} onChange=${(event) => setReportFilters({ ...reportFilters, from: event.target.value })} />
+                  <${Input} label="Hasta" type="date" value=${reportFilters.to} onChange=${(event) => setReportFilters({ ...reportFilters, to: event.target.value })} />
+                  <${Select} label="Mentor/Lider/Pastor" value=${reportFilters.mentorId} onChange=${(event) => setReportFilters({ ...reportFilters, mentorId: event.target.value })}>
+                    <option value="">Todos</option>
+                    ${mentorOptions.map((mentor) => html`<option value=${mentor.accountId}>${mentor.fullName}</option>`)}
+                  </${Select}>
+                  <${Select} label="Estado" value=${reportFilters.status} onChange=${(event) => setReportFilters({ ...reportFilters, status: event.target.value })}>
+                    <option value="">Todos</option>
+                    <option value="activo">Activos</option>
+                    <option value="inactivo">Inactivos</option>
+                  </${Select}>
+                  <${Select} label="Bautizados" value=${reportFilters.baptized} onChange=${(event) => setReportFilters({ ...reportFilters, baptized: event.target.value })}>
+                    <option value="">Todos</option>
+                    <option value="SI">SI</option>
+                    <option value="NO">NO</option>
+                  </${Select}>
+                  <${Input} label="Edad minima" type="number" value=${reportFilters.minAge} onChange=${(event) => setReportFilters({ ...reportFilters, minAge: event.target.value })} />
+                  <${Input} label="Edad maxima" type="number" value=${reportFilters.maxAge} onChange=${(event) => setReportFilters({ ...reportFilters, maxAge: event.target.value })} />
+                  <div className="md:col-span-4 flex justify-end">
+                    <button className="rounded-2xl bg-brand-600 px-5 py-3 font-semibold text-white" disabled=${loading}>Generar informe</button>
+                  </div>
+                </form>
+              </div>
+
+              ${reportPreview && html`
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <${StatCard} label="Miembros" value=${reportPreview.summary.totalMembers} accent="bg-brand-500" detail="Total filtrado" />
+                  <${StatCard} label="Activos" value=${reportPreview.summary.activeMembers} accent="bg-emerald-500" detail="Miembros activos" />
+                  <${StatCard} label="Seguimientos" value=${reportPreview.summary.visits + reportPreview.summary.calls + reportPreview.summary.meetings + reportPreview.summary.interactions} accent="bg-sky-500" detail="Visitas, llamadas y reuniones" />
+                  <${StatCard} label="Alertas" value=${reportPreview.summary.activeAlerts} accent="bg-amber-500" detail="Alertas activas" />
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <${ChartPanel}
+                    title="Distribucion por roles"
+                    labels=${Object.keys(reportPreview.distributions.roles)}
+                    values=${Object.values(reportPreview.distributions.roles)}
+                  />
+                  <${ChartPanel}
+                    title="Distribucion por edades"
+                    labels=${Object.keys(reportPreview.distributions.ages)}
+                    values=${Object.values(reportPreview.distributions.ages)}
+                  />
+                </div>
+                <div className="panel rounded-2xl p-5 shadow-soft">
+                  <h3 className="font-heading text-lg font-bold">Resumen ejecutivo</h3>
+                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                    El informe registra ${reportPreview.summary.totalMembers} miembros, ${reportPreview.summary.baptizedMembers} bautizados,
+                    ${reportPreview.summary.membersWithoutFollowUp} sin seguimiento reciente y una efectividad de mentorías de
+                    ${reportPreview.summary.mentorshipEffectiveness}%.
+                  </p>
+                </div>
+              `}
+
+              <div className="panel rounded-2xl p-5 shadow-soft">
+                <h3 className="font-heading text-lg font-bold">Informes recientes</h3>
+                <div className="mt-4 space-y-3">
+                  ${reports.length
+                    ? reports.map((report) => html`
+                      <div className="flex flex-col gap-2 rounded-2xl bg-slate-100/90 px-4 py-3 dark:bg-slate-900 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="font-semibold">${report.type}</div>
+                          <div className="text-sm text-slate-500">${formatDate(report.createdAt?.slice(0, 10))} · ${report.generatedByUser?.fullName || "Sistema"}</div>
+                        </div>
+                        <div className="text-sm text-slate-500">${report.summary?.totalMembers || 0} miembros</div>
+                      </div>
+                    `)
+                    : html`<p className="text-sm text-slate-500 dark:text-slate-400">Aun no hay informes generados.</p>`}
+                </div>
+              </div>
             </section>
           `}
 
@@ -1201,6 +1511,7 @@ const App = () => {
                            ${hasPermission(user, "users:manage") && html`
                            <div className="flex gap-2">
                              <button className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => { setEditingUser(account); setShowUserModal(true); }}>Editar</button>
+                             <button className="rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => resetPassword(account.id)}>Reset</button>
                              ${account.id !== user.id &&
                              html`<button className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => removeUser(account.id)}>Eliminar</button>`}
                            </div>
@@ -1210,6 +1521,24 @@ const App = () => {
                     `
                   )
                 : html`<${EmptyState} title="Sin usuarios" detail="Los usuarios se sincronizan desde miembros con correo y rol ministerial." />`}
+            </section>
+          `}
+
+          ${activeTab === "activity" && hasPermission(user, "users:view") && html`
+            <section className="space-y-4">
+              ${activityLogs.length
+                ? activityLogs.map((log) => html`
+                  <div className="panel rounded-2xl p-5 shadow-soft">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="font-heading text-lg font-bold">${log.action}</h3>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">${log.user?.fullName || "Sistema"} · ${log.entityType || "-"}</p>
+                      </div>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">${formatDate(log.createdAt?.slice(0, 10))}</span>
+                    </div>
+                  </div>
+                `)
+                : html`<${EmptyState} title="Sin auditoría" detail="La actividad de usuarios aparecerá aquí." />`}
             </section>
           `}
         </main>
@@ -1315,11 +1644,11 @@ const App = () => {
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitUser}>
           <${Input} label="Nombre completo" name="fullName" defaultValue=${editingUser?.fullName || ""} required />
           <${Input} label="Correo" name="email" type="email" defaultValue=${editingUser?.email || ""} required />
-          <${Select} label="Rol RBAC manual" name="role" defaultValue=${editingUser?.role || "MIEMBRO"}>
-            <option value="MIEMBRO">Miembro</option>
+          <${Select} label="Rol RBAC manual" name="role" defaultValue=${editingUser?.role || "MENTOR"}>
             <option value="MENTOR">Mentor</option>
             <option value="LIDER">Lider</option>
             <option value="PASTOR">Pastor</option>
+            <option value="SECRETARIA">Secretaria</option>
             <option value="ADMIN">Administrador</option>
           </${Select}>
           <${Input} label="Contrasena" name="password" type="password" defaultValue=${editingUser ? "" : "Cambio123*"} placeholder=${editingUser ? "Dejar vacia para conservar" : ""} />

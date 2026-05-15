@@ -3,7 +3,7 @@ export const SYSTEM_ROLES = {
   PASTOR: "PASTOR",
   LIDER: "LIDER",
   MENTOR: "MENTOR",
-  MIEMBRO: "MIEMBRO"
+  SECRETARIA: "SECRETARIA"
 };
 
 export const MEMBER_ROLES = {
@@ -19,7 +19,7 @@ export const ROLE_LABELS = {
   [SYSTEM_ROLES.PASTOR]: "Pastor",
   [SYSTEM_ROLES.LIDER]: "Lider",
   [SYSTEM_ROLES.MENTOR]: "Mentor",
-  [SYSTEM_ROLES.MIEMBRO]: "Miembro"
+  [SYSTEM_ROLES.SECRETARIA]: "Secretaria"
 };
 
 export const PERMISSIONS = {
@@ -38,6 +38,8 @@ export const PERMISSIONS = {
   ALERTS_ATTEND: "alerts:attend",
   USERS_VIEW: "users:view",
   USERS_MANAGE: "users:manage",
+  REPORTS_VIEW: "reports:view",
+  REPORTS_GENERATE: "reports:generate",
   REPORTS_EXPORT: "reports:export",
   SETTINGS_MANAGE: "settings:manage"
 };
@@ -59,6 +61,8 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.INTERACTIONS_CREATE,
     PERMISSIONS.ALERTS_VIEW,
     PERMISSIONS.ALERTS_ATTEND,
+    PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.REPORTS_GENERATE,
     PERMISSIONS.REPORTS_EXPORT
   ],
   [SYSTEM_ROLES.LIDER]: [
@@ -72,8 +76,7 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.INTERACTIONS_VIEW,
     PERMISSIONS.INTERACTIONS_CREATE,
     PERMISSIONS.ALERTS_VIEW,
-    PERMISSIONS.ALERTS_ATTEND,
-    PERMISSIONS.REPORTS_EXPORT
+    PERMISSIONS.ALERTS_ATTEND
   ],
   [SYSTEM_ROLES.MENTOR]: [
     PERMISSIONS.DASHBOARD_VIEW,
@@ -86,11 +89,19 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.ALERTS_VIEW,
     PERMISSIONS.ALERTS_ATTEND
   ],
-  [SYSTEM_ROLES.MIEMBRO]: [
+  [SYSTEM_ROLES.SECRETARIA]: [
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.MEMBERS_VIEW,
+    PERMISSIONS.MEMBERS_CREATE,
+    PERMISSIONS.MEMBERS_UPDATE,
+    PERMISSIONS.ATTENDANCE_VIEW,
+    PERMISSIONS.ATTENDANCE_CREATE,
     PERMISSIONS.INTERACTIONS_VIEW,
-    PERMISSIONS.ALERTS_VIEW
+    PERMISSIONS.INTERACTIONS_CREATE,
+    PERMISSIONS.ALERTS_VIEW,
+    PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.REPORTS_GENERATE,
+    PERMISSIONS.REPORTS_EXPORT
   ]
 };
 
@@ -122,7 +133,7 @@ export const normalizeMemberRole = (value, fallback = null) => {
   return map[normalizeKey(value)] || fallback;
 };
 
-export const normalizeSystemRole = (value, fallback = SYSTEM_ROLES.MIEMBRO) => {
+export const normalizeSystemRole = (value, fallback = null) => {
   const map = {
     admin: SYSTEM_ROLES.ADMIN,
     administrador: SYSTEM_ROLES.ADMIN,
@@ -134,8 +145,8 @@ export const normalizeSystemRole = (value, fallback = SYSTEM_ROLES.MIEMBRO) => {
     mentor: SYSTEM_ROLES.MENTOR,
     mentora: SYSTEM_ROLES.MENTOR,
     asistente: SYSTEM_ROLES.MENTOR,
-    miembro: SYSTEM_ROLES.MIEMBRO,
-    integrante: SYSTEM_ROLES.MIEMBRO
+    secretaria: SYSTEM_ROLES.SECRETARIA,
+    secretario: SYSTEM_ROLES.SECRETARIA
   };
   return map[normalizeKey(value)] || fallback;
 };
@@ -147,12 +158,12 @@ export const systemRoleFromMemberRole = (memberRole) => {
     [MEMBER_ROLES.PASTOR]: SYSTEM_ROLES.PASTOR,
     [MEMBER_ROLES.LIDER]: SYSTEM_ROLES.LIDER,
     [MEMBER_ROLES.MENTOR]: SYSTEM_ROLES.MENTOR,
-    [MEMBER_ROLES.MIEMBRO]: SYSTEM_ROLES.MIEMBRO
+    [MEMBER_ROLES.MIEMBRO]: null
   }[normalized];
 };
 
 export const getRolePermissions = (role) =>
-  ROLE_PERMISSIONS[normalizeSystemRole(role)] || ROLE_PERMISSIONS[`${SYSTEM_ROLES.MIEMBRO}`];
+  ROLE_PERMISSIONS[normalizeSystemRole(role)] || [];
 
 export const hasPermission = (user, permission) =>
   Boolean(user && getRolePermissions(user.role).includes(permission));
@@ -165,7 +176,7 @@ export const requirePermission = (user, permission, message = "No tienes permiso
 };
 
 export const canAccessAllMembers = (user) =>
-  [SYSTEM_ROLES.ADMIN, SYSTEM_ROLES.PASTOR, SYSTEM_ROLES.LIDER].includes(
+  [SYSTEM_ROLES.ADMIN, SYSTEM_ROLES.PASTOR, SYSTEM_ROLES.LIDER, SYSTEM_ROLES.SECRETARIA].includes(
     normalizeSystemRole(user?.role)
   );
 

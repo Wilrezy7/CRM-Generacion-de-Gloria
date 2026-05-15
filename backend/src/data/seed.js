@@ -10,5 +10,13 @@ export const seedData = {
   youths: [],
   attendanceSessions: [],
   interactions: [],
-  alerts: []
+  alerts: [],
+  mentorAssignments: [],
+  visits: [],
+  calls: [],
+  meetings: [],
+  pastoralNotes: [],
+  reports: [],
+  reportDownloads: [],
+  activityLogs: []
 };

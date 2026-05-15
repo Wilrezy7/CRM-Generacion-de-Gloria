@@ -45,6 +45,23 @@ const ensurePermission = (user, permission, message) =>
 
 const defaultSyncedPasswordHash = () => hashPassword("Cambio123*");
 
+const canHaveSystemAccount = (memberRole) =>
+  Boolean(systemRoleFromMemberRole(memberRole));
+
+const logActivity = (data, user, action, entityType, entityId, metadata = {}) => {
+  data.activityLogs = Array.isArray(data.activityLogs) ? data.activityLogs : [];
+  data.activityLogs.unshift({
+    id: createId("log"),
+    userId: user?.id || null,
+    action,
+    entityType,
+    entityId: entityId || null,
+    metadata,
+    createdAt: nowIso()
+  });
+  data.activityLogs = data.activityLogs.slice(0, 1000);
+};
+
 const syncUsersFromMembers = (data) => {
   data.users = Array.isArray(data.users) ? data.users : [];
   data.youths = Array.isArray(data.youths) ? data.youths : [];
@@ -52,6 +69,8 @@ const syncUsersFromMembers = (data) => {
   data.users = data.users.map((user) => ({
     assignedYouthIds: [],
     active: true,
+    mustChangePassword: false,
+    createdAt: nowIso(),
     ...user,
     role: normalizeSystemRole(user.role),
     assignedYouthIds: Array.isArray(user.assignedYouthIds)
@@ -73,15 +92,23 @@ const syncUsersFromMembers = (data) => {
 
   for (const youth of data.youths) {
     const email = normalizeText(youth.email).toLowerCase();
-    if (!email) continue;
-
     const role = systemRoleFromMemberRole(youth.memberRole);
     let account = usersByMemberId.get(youth.id) || usersByEmail.get(email);
+    if (!email || !canHaveSystemAccount(youth.memberRole)) {
+      if (account?.memberId === youth.id) {
+        account.memberRole = youth.memberRole;
+        account.active = false;
+        account.assignedYouthIds = [];
+        account.updatedAt = nowIso();
+      }
+      continue;
+    }
 
     if (!account) {
       account = {
         id: createId("usr"),
         passwordHash: defaultSyncedPasswordHash(),
+        mustChangePassword: true,
         createdAt: nowIso(),
         assignedYouthIds: []
       };
@@ -95,6 +122,8 @@ const syncUsersFromMembers = (data) => {
     account.memberRole = youth.memberRole;
     account.active = youth.status !== "inactivo";
     account.passwordHash = account.passwordHash || defaultSyncedPasswordHash();
+    account.mustChangePassword = account.mustChangePassword !== false;
+    account.updatedAt = nowIso();
 
     usersByMemberId.set(youth.id, account);
     usersByEmail.set(email, account);
@@ -127,6 +156,15 @@ const syncUsersFromMembers = (data) => {
     role: normalizeSystemRole(user.role),
     assignedYouthIds: assignedByUser.get(user.id) || []
   }));
+
+  data.mentorAssignments = data.youths
+    .filter((youth) => youth.assignedUserId)
+    .map((youth) => ({
+      id: `asg_${youth.assignedUserId}_${youth.id}`,
+      mentorUserId: youth.assignedUserId,
+      youthId: youth.id,
+      createdAt: youth.assignedAt || youth.updatedAt || nowIso()
+    }));
 };
 
 const sanitizeUserWithAssignments = (data, user) => ({
@@ -149,6 +187,17 @@ const serializeYouth = (data, youth) => {
   };
 };
 
+const ensureAssignableMentor = (data, mentorUserId) => {
+  if (!mentorUserId) return null;
+  const mentor = data.users.find((item) => item.id === mentorUserId);
+  if (!canBeAssignedAsMentor(mentor)) {
+    const error = new Error("El usuario seleccionado no puede recibir miembros asignados.");
+    error.status = 400;
+    throw error;
+  }
+  return mentor;
+};
+
 const escapeXml = (value) =>
   String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -156,6 +205,137 @@ const escapeXml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+
+const formatPercent = (value) => `${Math.round(Number(value || 0))}%`;
+
+const parseReportFilters = (query = {}) => ({
+  from: normalizeText(query.from || query.startDate),
+  to: normalizeText(query.to || query.endDate),
+  mentorId: normalizeText(query.mentorId || query.mentor),
+  leaderId: normalizeText(query.leaderId || query.leader),
+  status: normalizeText(query.status),
+  minAge: query.minAge === undefined || query.minAge === "" ? null : Number(query.minAge),
+  maxAge: query.maxAge === undefined || query.maxAge === "" ? null : Number(query.maxAge),
+  gender: normalizeText(query.gender),
+  baptized: normalizeText(query.baptized),
+  attendance: normalizeText(query.attendance),
+  active: normalizeText(query.active)
+});
+
+const dateInRange = (date, filters) => {
+  if (!date) return true;
+  if (filters.from && date < filters.from) return false;
+  if (filters.to && date > filters.to) return false;
+  return true;
+};
+
+const countBy = (items, getter) =>
+  items.reduce((acc, item) => {
+    const key = getter(item) || "Sin dato";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+const ageRange = (age) => {
+  const value = Number(age);
+  if (!Number.isFinite(value)) return "Sin dato";
+  if (value <= 12) return "0-12";
+  if (value <= 17) return "13-17";
+  if (value <= 25) return "18-25";
+  if (value <= 35) return "26-35";
+  return "36+";
+};
+
+const filterYouthsForReport = (data, user, filters) =>
+  data.youths
+    .filter(youthVisibilityFilter(user))
+    .filter((youth) => !filters.status || youth.status === filters.status)
+    .filter((youth) => !filters.active || youth.status === (filters.active === "true" ? "activo" : "inactivo"))
+    .filter((youth) => !filters.mentorId || youth.assignedUserId === filters.mentorId)
+    .filter((youth) => !filters.leaderId || youth.assignedUserId === filters.leaderId)
+    .filter((youth) => !filters.baptized || youth.baptized === filters.baptized)
+    .filter((youth) => !filters.gender || normalizeText(youth.gender).toLowerCase() === filters.gender.toLowerCase())
+    .filter((youth) => filters.minAge === null || Number(youth.age) >= filters.minAge)
+    .filter((youth) => filters.maxAge === null || Number(youth.age) <= filters.maxAge)
+    .filter((youth) => dateInRange(youth.joinDate || youth.createdAt?.slice(0, 10), filters));
+
+const buildReportPayload = (data, user, type = "general", query = {}) => {
+  const filters = parseReportFilters(query);
+  const members = filterYouthsForReport(data, user, filters);
+  const memberIds = new Set(members.map((item) => item.id));
+  const visits = (data.visits || []).filter((item) => memberIds.has(item.youthId) && dateInRange(item.date, filters));
+  const calls = (data.calls || []).filter((item) => memberIds.has(item.youthId) && dateInRange(item.date, filters));
+  const meetings = (data.meetings || []).filter((item) => memberIds.has(item.youthId) && dateInRange(item.date, filters));
+  const interactions = data.interactions.filter((item) => memberIds.has(item.youthId) && dateInRange(item.date, filters));
+  const alerts = data.alerts.filter((item) => memberIds.has(item.youthId));
+  const attendanceSessions = data.attendanceSessions.filter((session) => dateInRange(session.date, filters));
+  const attendanceRecords = attendanceSessions.flatMap((session) =>
+    session.attendance
+      .filter((record) => memberIds.has(record.youthId))
+      .map((record) => ({ ...record, sessionDate: session.date, sessionTitle: session.title }))
+  );
+  const followedIds = new Set(
+    [...visits, ...calls, ...meetings, ...interactions].map((item) => item.youthId)
+  );
+  const present = attendanceRecords.filter((item) => item.present).length;
+  const attendancePercent = attendanceRecords.length
+    ? Math.round((present / attendanceRecords.length) * 100)
+    : 0;
+  const mentorshipTotal = visits.length + calls.length + meetings.length + interactions.length;
+  const activeAssigned = members.filter((item) => item.assignedUserId).length;
+  const effectiveness = activeAssigned
+    ? Math.round((followedIds.size / activeAssigned) * 100)
+    : 0;
+  const monthlyGrowth = countBy(members, (member) => (member.joinDate || member.createdAt || "").slice(0, 7));
+  const weeklyAttendance = countBy(attendanceRecords, (record) => record.sessionDate);
+
+  return {
+    id: createId("rpt"),
+    type,
+    filters,
+    generatedAt: nowIso(),
+    generatedBy: sanitizeUser(user),
+    summary: {
+      totalMembers: members.length,
+      activeMembers: members.filter((item) => item.status === "activo").length,
+      inactiveMembers: members.filter((item) => item.status === "inactivo").length,
+      newMembers: members.filter((item) => dateInRange(item.joinDate || item.createdAt?.slice(0, 10), filters)).length,
+      baptizedMembers: members.filter((item) => item.baptized === "SI").length,
+      leaders: members.filter((item) => item.memberRole === "Lider").length,
+      mentors: members.filter((item) => item.memberRole === "Mentor").length,
+      pastors: members.filter((item) => item.memberRole === "Pastor").length,
+      visits: visits.length,
+      calls: calls.length,
+      meetings: meetings.length,
+      interactions: interactions.length,
+      pendingFollowUps: members.filter((item) => item.status === "activo" && !followedIds.has(item.id)).length,
+      membersWithoutFollowUp: members.filter((item) => !followedIds.has(item.id)).length,
+      activeAlerts: alerts.filter((item) => item.status === "pendiente").length,
+      attendancePercent,
+      mentorshipEffectiveness: effectiveness
+    },
+    distributions: {
+      ages: countBy(members, (member) => ageRange(member.age)),
+      gender: countBy(members, (member) => member.gender || "Sin dato"),
+      spiritualStatus: countBy(members, (member) => member.baptized === "SI" ? "Bautizado" : "No bautizado"),
+      roles: countBy(members, (member) => member.memberRole || "Miembro"),
+      status: countBy(members, (member) => member.status || "activo"),
+      monthlyGrowth,
+      weeklyAttendance
+    },
+    tables: {
+      members: members.map((item) => serializeYouth(data, item)),
+      followUps: [
+        ...visits.map((item) => ({ ...item, kind: "Visita" })),
+        ...calls.map((item) => ({ ...item, kind: "Llamada" })),
+        ...meetings.map((item) => ({ ...item, kind: "Reunion" })),
+        ...interactions.map((item) => ({ ...item, kind: item.type || "Seguimiento" }))
+      ].sort((a, b) => String(b.date).localeCompare(String(a.date))),
+      attendance: attendanceRecords,
+      alerts
+    }
+  };
+};
 
 const validateYouthPayload = (payload) => {
   const fullName = normalizeText(payload.fullName);
@@ -232,7 +412,16 @@ const validateUserPayload = (payload) => {
     fullName,
     email,
     role,
-    active: payload.active !== false,
+    active:
+      payload.active === undefined
+        ? true
+        : payload.active === true || payload.active === "true" || payload.active === "on",
+    mustChangePassword:
+      payload.mustChangePassword === undefined
+        ? true
+        : payload.mustChangePassword === true ||
+          payload.mustChangePassword === "true" ||
+          payload.mustChangePassword === "on",
     assignedYouthIds: Array.isArray(payload.assignedYouthIds)
       ? payload.assignedYouthIds
       : []
@@ -289,7 +478,7 @@ const recalculateAlerts = (data) => {
 };
 
 export const sanitizeUser = (user) => {
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash, temporaryPassword, ...safeUser } = user;
   const role = normalizeSystemRole(safeUser.role);
   return {
     ...safeUser,
@@ -337,7 +526,10 @@ export const bootstrapSystem = async (payload) => {
     memberRole: MEMBER_ROLES.ADMIN,
     assignedYouthIds: [],
     active: true,
-    createdAt: nowIso()
+    mustChangePassword: false,
+    lastLogin: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
   };
 
   data.meta = {
@@ -346,6 +538,7 @@ export const bootstrapSystem = async (payload) => {
     updatedAt: nowIso()
   };
   data.users = [admin];
+  logActivity(data, admin, "setup.bootstrap", "user", admin.id, { email });
   await writeDb(data);
   return sanitizeUser(admin);
 };
@@ -370,6 +563,10 @@ export const login = async ({ email, password }) => {
     error.status = 403;
     throw error;
   }
+  user.lastLogin = nowIso();
+  user.updatedAt = nowIso();
+  logActivity(data, user, "auth.login", "user", user.id, { email: user.email });
+  await writeDb(data);
   return sanitizeUser(user);
 };
 
@@ -379,7 +576,12 @@ export const getDashboard = async (user) => {
   const visibleYouths = data.youths.filter(youthVisibilityFilter(user));
   const visibleIds = new Set(visibleYouths.map((item) => item.id));
   const recentInteractions = sortByDateDesc(
-    data.interactions.filter((item) => visibleIds.has(item.youthId)),
+    [
+      ...data.interactions,
+      ...(data.visits || []).map((item) => ({ ...item, type: "visita" })),
+      ...(data.calls || []).map((item) => ({ ...item, type: "llamada" })),
+      ...(data.meetings || []).map((item) => ({ ...item, type: "reunion" }))
+    ].filter((item) => visibleIds.has(item.youthId)),
     "date"
   ).slice(0, 6);
   const alerts = data.alerts.filter(
@@ -421,9 +623,14 @@ export const getDashboard = async (user) => {
             )
           : 0,
       pendingAlerts: alerts.length,
-      followUpsThisMonth: data.interactions.filter(
-        (item) => visibleIds.has(item.youthId) && sameMonth(item.date, now)
-      ).length
+      followUpsThisMonth: [
+        ...data.interactions,
+        ...(data.visits || []),
+        ...(data.calls || []),
+        ...(data.meetings || [])
+      ].filter((item) => visibleIds.has(item.youthId) && sameMonth(item.date, now)).length,
+      assignedMembers: data.youths.filter((item) => item.assignedUserId === user.id).length,
+      activeMentors: data.users.filter((item) => canBeAssignedAsMentor(item)).length
     },
     attendanceTrend: sessionStats.slice(-8),
     recentInteractions,
@@ -467,9 +674,16 @@ export const createYouth = async (user, payload) => {
   };
   if (!canManageAssignments(user)) {
     record.assignedUserId = user.id;
+  } else {
+    ensureAssignableMentor(data, record.assignedUserId);
   }
+  if (record.assignedUserId) record.assignedAt = nowIso();
   data.youths.push(record);
   syncUsersFromMembers(data);
+  logActivity(data, user, "member.create", "member", record.id, {
+    memberRole: record.memberRole,
+    assignedUserId: record.assignedUserId
+  });
   await writeDb(data);
   return serializeYouth(data, record);
 };
@@ -486,9 +700,20 @@ export const updateYouth = async (user, youthId, payload) => {
   };
   if (!canManageAssignments(user) && next.id !== user.memberId) {
     next.assignedUserId = user.id;
+  } else {
+    ensureAssignableMentor(data, next.assignedUserId);
+  }
+  if (next.assignedUserId !== current.assignedUserId) {
+    next.assignedAt = next.assignedUserId ? nowIso() : null;
   }
   data.youths[index] = next;
   syncUsersFromMembers(data);
+  logActivity(data, user, "member.update", "member", next.id, {
+    previousRole: current.memberRole,
+    nextRole: next.memberRole,
+    previousAssignedUserId: current.assignedUserId || null,
+    nextAssignedUserId: next.assignedUserId || null
+  });
   await writeDb(data);
   return serializeYouth(data, data.youths[index]);
 };
@@ -505,9 +730,36 @@ export const deleteYouth = async (user, youthId) => {
   }));
   data.interactions = data.interactions.filter((item) => item.youthId !== youthId);
   data.alerts = data.alerts.filter((item) => item.youthId !== youthId);
+  data.visits = (data.visits || []).filter((item) => item.youthId !== youthId);
+  data.calls = (data.calls || []).filter((item) => item.youthId !== youthId);
+  data.meetings = (data.meetings || []).filter((item) => item.youthId !== youthId);
+  data.pastoralNotes = (data.pastoralNotes || []).filter((item) => item.youthId !== youthId);
   syncUsersFromMembers(data);
+  logActivity(data, user, "member.delete", "member", youthId, { fullName: youth.fullName });
   await writeDb(data);
   return true;
+};
+
+export const assignYouthMentor = async (user, youthId, payload) => {
+  ensurePermission(user, PERMISSIONS.MEMBERS_ASSIGN, "No tienes permiso para reasignar miembros.");
+  const data = await readDb();
+  const index = data.youths.findIndex((item) => item.id === youthId);
+  const youth = ensureYouthAccess(user, data.youths[index]);
+  const mentorUserId = normalizeText(payload.mentorUserId || payload.assignedUserId) || null;
+  ensureAssignableMentor(data, mentorUserId);
+  data.youths[index] = {
+    ...youth,
+    assignedUserId: mentorUserId,
+    assignedAt: mentorUserId ? nowIso() : null,
+    updatedAt: nowIso()
+  };
+  syncUsersFromMembers(data);
+  logActivity(data, user, "assignment.update", "member", youthId, {
+    previousAssignedUserId: youth.assignedUserId || null,
+    nextAssignedUserId: mentorUserId
+  });
+  await writeDb(data);
+  return serializeYouth(data, data.youths[index]);
 };
 
 export const listAttendance = async (user) => {
@@ -587,11 +839,29 @@ export const getYouthTimeline = async (user, youthId) => {
     data.interactions.filter((item) => item.youthId === youthId),
     "date"
   );
+  const visits = sortByDateDesc((data.visits || []).filter((item) => item.youthId === youthId), "date");
+  const calls = sortByDateDesc((data.calls || []).filter((item) => item.youthId === youthId), "date");
+  const meetings = sortByDateDesc((data.meetings || []).filter((item) => item.youthId === youthId), "date");
+  const pastoralNotes = sortByDateDesc(
+    (data.pastoralNotes || [])
+      .filter((item) => item.youthId === youthId)
+      .filter((item) => !item.private || canAccessAllMembers(user) || item.authorUserId === user.id),
+    "createdAt"
+  );
   const alerts = sortByDateDesc(
     data.alerts.filter((item) => item.youthId === youthId),
     "generatedAt"
   );
-  return { youth: serializeYouth(data, youth), attendanceHistory, interactions, alerts };
+  return {
+    youth: serializeYouth(data, youth),
+    attendanceHistory,
+    interactions,
+    visits,
+    calls,
+    meetings,
+    pastoralNotes,
+    alerts
+  };
 };
 
 export const listInteractions = async (user) => {
@@ -638,8 +908,153 @@ export const createInteraction = async (user, payload) => {
     createdAt: nowIso()
   };
   data.interactions.push(interaction);
+  logActivity(data, user, "mentorship.interaction_create", "interaction", interaction.id, {
+    youthId: youth.id,
+    type
+  });
   await writeDb(data);
   return interaction;
+};
+
+const withYouth = (data, item) => ({
+  ...item,
+  youth: data.youths.find((youth) => youth.id === item.youthId)
+    ? serializeYouth(data, data.youths.find((youth) => youth.id === item.youthId))
+    : null,
+  mentor: data.users.find((mentor) => mentor.id === item.mentorUserId)
+    ? sanitizeUser(data.users.find((mentor) => mentor.id === item.mentorUserId))
+    : null
+});
+
+const listMentorshipRecords = async (user, collectionName) => {
+  const data = await readDb();
+  ensurePermission(user, PERMISSIONS.INTERACTIONS_VIEW);
+  const visibleIds = new Set(
+    data.youths.filter(youthVisibilityFilter(user)).map((item) => item.id)
+  );
+  return sortByDateDesc(
+    (data[collectionName] || [])
+      .filter((item) => visibleIds.has(item.youthId))
+      .filter((item) => canAccessAllMembers(user) || item.mentorUserId === user.id)
+      .map((item) => withYouth(data, item)),
+    "date"
+  );
+};
+
+const createMentorshipRecord = async (user, collectionName, action, payload, fields) => {
+  ensurePermission(user, PERMISSIONS.INTERACTIONS_CREATE, "No tienes permiso para registrar mentorias.");
+  const data = await readDb();
+  const youth = ensureYouthAccess(
+    user,
+    data.youths.find((item) => item.id === payload.youthId)
+  );
+  const date = normalizeText(payload.date);
+  if (!date) {
+    const error = new Error("Debes indicar fecha.");
+    error.status = 400;
+    throw error;
+  }
+  data[collectionName] = Array.isArray(data[collectionName]) ? data[collectionName] : [];
+  const record = {
+    id: createId(action.slice(0, 3)),
+    youthId: youth.id,
+    mentorUserId: user.id,
+    date,
+    ...fields(payload),
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  data[collectionName].push(record);
+  logActivity(data, user, `mentorship.${action}_create`, action, record.id, {
+    youthId: youth.id
+  });
+  await writeDb(data);
+  return withYouth(data, record);
+};
+
+export const listVisits = (user) => listMentorshipRecords(user, "visits");
+
+export const createVisit = (user, payload) =>
+  createMentorshipRecord(user, "visits", "visit", payload, (body) => ({
+    location: normalizeText(body.location),
+    observations: normalizeText(body.observations),
+    result: normalizeText(body.result)
+  }));
+
+export const listCalls = (user) => listMentorshipRecords(user, "calls");
+
+export const createCall = (user, payload) =>
+  createMentorshipRecord(user, "calls", "call", payload, (body) => ({
+    durationMinutes: Math.max(0, Number(body.durationMinutes || body.duration || 0)),
+    observations: normalizeText(body.observations)
+  }));
+
+export const listMeetings = (user) => listMentorshipRecords(user, "meetings");
+
+export const createMeeting = (user, payload) =>
+  createMentorshipRecord(user, "meetings", "meeting", payload, (body) => ({
+    type: normalizeText(body.type || "mentoria"),
+    notes: normalizeText(body.notes)
+  }));
+
+export const listPastoralNotes = async (user) => {
+  const data = await readDb();
+  ensurePermission(user, PERMISSIONS.INTERACTIONS_VIEW);
+  const visibleIds = new Set(
+    data.youths.filter(youthVisibilityFilter(user)).map((item) => item.id)
+  );
+  return sortByDateDesc(
+    (data.pastoralNotes || [])
+      .filter((item) => visibleIds.has(item.youthId))
+      .filter(
+        (item) =>
+          !item.private ||
+          canAccessAllMembers(user) ||
+          item.authorUserId === user.id
+      )
+      .map((item) => ({
+        ...item,
+        youth: data.youths.find((youth) => youth.id === item.youthId)
+          ? serializeYouth(data, data.youths.find((youth) => youth.id === item.youthId))
+          : null,
+        author: data.users.find((author) => author.id === item.authorUserId)
+          ? sanitizeUser(data.users.find((author) => author.id === item.authorUserId))
+          : null
+      })),
+    "createdAt"
+  );
+};
+
+export const createPastoralNote = async (user, payload) => {
+  ensurePermission(user, PERMISSIONS.INTERACTIONS_CREATE, "No tienes permiso para registrar notas pastorales.");
+  const data = await readDb();
+  const youth = ensureYouthAccess(
+    user,
+    data.youths.find((item) => item.id === payload.youthId)
+  );
+  const note = normalizeText(payload.note || payload.notes);
+  if (!note) {
+    const error = new Error("La nota pastoral no puede estar vacia.");
+    error.status = 400;
+    throw error;
+  }
+  data.pastoralNotes = Array.isArray(data.pastoralNotes) ? data.pastoralNotes : [];
+  const record = {
+    id: createId("nte"),
+    youthId: youth.id,
+    authorUserId: user.id,
+    note,
+    private: payload.private !== false,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  data.pastoralNotes.push(record);
+  logActivity(data, user, "mentorship.pastoral_note_create", "pastoral_note", record.id, {
+    youthId: youth.id,
+    private: record.private
+  });
+  await writeDb(data);
+  return record;
 };
 
 export const listAlerts = async (user) => {
@@ -703,7 +1118,10 @@ export const createUser = async (user, payload) => {
     id: createId("usr"),
     ...sanitized,
     passwordHash: hashPassword(normalizeText(payload.password) || "Cambio123*"),
-    createdAt: nowIso()
+    mustChangePassword: true,
+    lastLogin: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
   };
   data.users.push(created);
   data.youths = data.youths.map((youth) =>
@@ -712,6 +1130,10 @@ export const createUser = async (user, payload) => {
       : youth
   );
   syncUsersFromMembers(data);
+  logActivity(data, user, "user.create", "user", created.id, {
+    email: created.email,
+    role: created.role
+  });
   await writeDb(data);
   return sanitizeUserWithAssignments(data, created);
 };
@@ -732,7 +1154,9 @@ export const updateUser = async (user, userId, payload) => {
     ...sanitized,
     passwordHash: payload.password
       ? hashPassword(normalizeText(payload.password))
-      : current.passwordHash
+      : current.passwordHash,
+    mustChangePassword: payload.password ? true : sanitized.mustChangePassword,
+    updatedAt: nowIso()
   };
   data.users[index] = updated;
   data.youths = data.youths.map((youth) => {
@@ -745,6 +1169,11 @@ export const updateUser = async (user, userId, payload) => {
     return youth;
   });
   syncUsersFromMembers(data);
+  logActivity(data, user, "user.update", "user", updated.id, {
+    previousRole: current.role,
+    nextRole: updated.role,
+    active: updated.active
+  });
   await writeDb(data);
   return sanitizeUserWithAssignments(data, data.users[index]);
 };
@@ -771,8 +1200,384 @@ export const deleteUser = async (user, userId) => {
     youth.assignedUserId === userId ? { ...youth, assignedUserId: null } : youth
   );
   syncUsersFromMembers(data);
+  logActivity(data, user, "user.delete", "user", userId, { email: target.email });
   await writeDb(data);
   return true;
+};
+
+export const listActivityLogs = async (user) => {
+  ensurePermission(user, PERMISSIONS.USERS_VIEW, "Solo el administrador puede ver auditoria.");
+  const data = await readDb();
+  return (data.activityLogs || []).slice(0, 300).map((log) => ({
+    ...log,
+    user: log.userId
+      ? sanitizeUser(data.users.find((item) => item.id === log.userId) || {})
+      : null
+  }));
+};
+
+const persistReport = async (data, user, report) => {
+  data.reports = Array.isArray(data.reports) ? data.reports : [];
+  const record = {
+    id: report.id,
+    generatedBy: user.id,
+    type: report.type,
+    filters: report.filters,
+    summary: report.summary,
+    createdAt: report.generatedAt
+  };
+  data.reports.unshift(record);
+  data.reports = data.reports.slice(0, 500);
+  logActivity(data, user, "report.generate", "report", record.id, {
+    type: record.type,
+    filters: record.filters
+  });
+  await writeDb(data);
+  return record;
+};
+
+const logReportDownload = async (data, user, reportId, format) => {
+  data.reportDownloads = Array.isArray(data.reportDownloads) ? data.reportDownloads : [];
+  const record = {
+    id: createId("rpd"),
+    reportId,
+    format,
+    downloadedBy: user.id,
+    createdAt: nowIso()
+  };
+  data.reportDownloads.unshift(record);
+  data.reportDownloads = data.reportDownloads.slice(0, 1000);
+  logActivity(data, user, "report.download", "report", reportId, { format });
+  await writeDb(data);
+  return record;
+};
+
+export const listReports = async (user) => {
+  ensurePermission(user, PERMISSIONS.REPORTS_VIEW, "No tienes permiso para ver informes.");
+  const data = await readDb();
+  return (data.reports || []).slice(0, 100).map((report) => ({
+    ...report,
+    generatedByUser: report.generatedBy
+      ? sanitizeUser(data.users.find((item) => item.id === report.generatedBy) || {})
+      : null
+  }));
+};
+
+export const generateReport = async (user, payload = {}) => {
+  ensurePermission(user, PERMISSIONS.REPORTS_GENERATE, "No tienes permiso para generar informes.");
+  const data = await readDb();
+  const report = buildReportPayload(data, user, payload.type || "general", payload.filters || payload);
+  await persistReport(data, user, report);
+  return report;
+};
+
+const worksheetXml = (name, rows) => `
+  <Worksheet ss:Name="${escapeXml(name)}">
+    <Table>
+      ${rows
+        .map(
+          (row) => `
+        <Row>${row
+          .map((cell) => `<Cell><Data ss:Type="${typeof cell === "number" ? "Number" : "String"}">${escapeXml(cell)}</Data></Cell>`)
+          .join("")}</Row>`
+        )
+        .join("")}
+    </Table>
+  </Worksheet>`;
+
+const reportToExcelXml = (report) => {
+  const statsRows = [
+    ["Indicador", "Valor"],
+    ["Total miembros", report.summary.totalMembers],
+    ["Activos", report.summary.activeMembers],
+    ["Inactivos", report.summary.inactiveMembers],
+    ["Nuevos", report.summary.newMembers],
+    ["Bautizados", report.summary.baptizedMembers],
+    ["Lideres", report.summary.leaders],
+    ["Mentores", report.summary.mentors],
+    ["Alertas activas", report.summary.activeAlerts],
+    ["Asistencia", formatPercent(report.summary.attendancePercent)],
+    ["Efectividad mentorias", formatPercent(report.summary.mentorshipEffectiveness)]
+  ];
+  const memberRows = [
+    ["Nombre", "Documento", "Telefono", "Correo", "Rol", "Estado", "Bautizado", "Edad", "Mentor"],
+    ...report.tables.members.map((item) => [
+      item.fullName,
+      item.documentId || "",
+      item.phone || "",
+      item.email || "",
+      item.memberRole || "Miembro",
+      item.status || "",
+      item.baptized || "",
+      Number(item.age || 0),
+      item.assignedMentor?.fullName || ""
+    ])
+  ];
+  const followRows = [
+    ["Tipo", "Fecha", "Miembro", "Responsable", "Detalle"],
+    ...report.tables.followUps.map((item) => [
+      item.kind,
+      item.date || "",
+      report.tables.members.find((member) => member.id === item.youthId)?.fullName || item.youthId,
+      report.generatedBy.fullName,
+      item.observations || item.notes || item.result || item.pastoralNotes || ""
+    ])
+  ];
+  const attendanceRows = [
+    ["Fecha", "Sesion", "Miembro", "Presente"],
+    ...report.tables.attendance.map((item) => [
+      item.sessionDate,
+      item.sessionTitle,
+      report.tables.members.find((member) => member.id === item.youthId)?.fullName || item.youthId,
+      item.present ? "SI" : "NO"
+    ])
+  ];
+  return `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+    <Author>CRM Generacion de Gloria</Author>
+    <Title>Informe institucional</Title>
+    <Created>${report.generatedAt}</Created>
+  </DocumentProperties>
+  ${worksheetXml("Estadisticas", statsRows)}
+  ${worksheetXml("Miembros", memberRows)}
+  ${worksheetXml("Seguimientos", followRows)}
+  ${worksheetXml("Asistencia", attendanceRows)}
+</Workbook>`;
+};
+
+const reportToExcelJs = async (report) => {
+  try {
+    const excelModule = await import("exceljs");
+    const Workbook = excelModule.default?.Workbook || excelModule.Workbook;
+    if (!Workbook) return null;
+    const workbook = new Workbook();
+    workbook.creator = "CRM Generacion de Gloria";
+    workbook.created = new Date(report.generatedAt);
+    workbook.properties.date1904 = false;
+
+    const addSheet = (name, rows) => {
+      const sheet = workbook.addWorksheet(name);
+      sheet.addRows(rows);
+      sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      sheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF84974A" }
+      };
+      sheet.columns.forEach((column) => {
+        const max = Math.max(
+          12,
+          ...column.values.map((value) => String(value || "").length + 2)
+        );
+        column.width = Math.min(max, 42);
+      });
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: 1, column: rows[0].length }
+      };
+      return sheet;
+    };
+
+    addSheet("Estadisticas", [
+      ["Generacion de Gloria CRM", ""],
+      ["Fecha generacion", report.generatedAt],
+      ["Indicador", "Valor"],
+      ["Total miembros", report.summary.totalMembers],
+      ["Activos", report.summary.activeMembers],
+      ["Inactivos", report.summary.inactiveMembers],
+      ["Bautizados", report.summary.baptizedMembers],
+      ["Alertas activas", report.summary.activeAlerts],
+      ["Asistencia", formatPercent(report.summary.attendancePercent)],
+      ["Efectividad mentorias", formatPercent(report.summary.mentorshipEffectiveness)]
+    ]);
+    addSheet("Miembros", [
+      ["Nombre", "Documento", "Telefono", "Correo", "Rol", "Estado", "Bautizado", "Edad", "Mentor"],
+      ...report.tables.members.map((item) => [
+        item.fullName,
+        item.documentId || "",
+        item.phone || "",
+        item.email || "",
+        item.memberRole || "Miembro",
+        item.status || "",
+        item.baptized || "",
+        Number(item.age || 0),
+        item.assignedMentor?.fullName || ""
+      ])
+    ]);
+    addSheet("Seguimientos", [
+      ["Tipo", "Fecha", "Miembro", "Detalle"],
+      ...report.tables.followUps.map((item) => [
+        item.kind,
+        item.date || "",
+        report.tables.members.find((member) => member.id === item.youthId)?.fullName || item.youthId,
+        item.observations || item.notes || item.result || item.pastoralNotes || ""
+      ])
+    ]);
+    addSheet("Asistencia", [
+      ["Fecha", "Sesion", "Miembro", "Presente"],
+      ...report.tables.attendance.map((item) => [
+        item.sessionDate,
+        item.sessionTitle,
+        report.tables.members.find((member) => member.id === item.youthId)?.fullName || item.youthId,
+        item.present ? "SI" : "NO"
+      ])
+    ]);
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  } catch {
+    return null;
+  }
+};
+
+const pdfEscape = (value) =>
+  String(value ?? "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+
+const buildSimplePdf = (report) => {
+  const lines = [
+    "Generacion de Gloria CRM",
+    "Informe institucional ejecutivo",
+    `Fecha de generacion: ${new Date(report.generatedAt).toLocaleString("es-CO")}`,
+    `Generado por: ${report.generatedBy.fullName}`,
+    "",
+    "Resumen ejecutivo",
+    `Total de miembros: ${report.summary.totalMembers}`,
+    `Miembros activos: ${report.summary.activeMembers}`,
+    `Miembros inactivos: ${report.summary.inactiveMembers}`,
+    `Nuevos miembros: ${report.summary.newMembers}`,
+    `Bautizados: ${report.summary.baptizedMembers}`,
+    `Lideres: ${report.summary.leaders}`,
+    `Mentores: ${report.summary.mentors}`,
+    `Visitas: ${report.summary.visits}`,
+    `Llamadas: ${report.summary.calls}`,
+    `Reuniones: ${report.summary.meetings}`,
+    `Alertas activas: ${report.summary.activeAlerts}`,
+    `Asistencia: ${formatPercent(report.summary.attendancePercent)}`,
+    `Efectividad de mentorias: ${formatPercent(report.summary.mentorshipEffectiveness)}`,
+    "",
+    "Nota institucional: reporte generado desde datos activos del CRM, con filtros aplicados y trazabilidad de descarga.",
+    "Formato: margenes institucionales tipo APA, encabezado jerarquico y resumen estadistico."
+  ];
+  const content = [
+    "BT",
+    "/F1 16 Tf",
+    "72 760 Td",
+    ...lines.flatMap((line, index) => [
+      index === 1 ? "/F1 14 Tf" : index === 5 ? "/F1 13 Tf" : "/F1 11 Tf",
+      `(${pdfEscape(line)}) Tj`,
+      "0 -24 Td"
+    ]),
+    "ET"
+  ].join("\n");
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
+    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+    `5 0 obj << /Length ${Buffer.byteLength(content)} >> stream\n${content}\nendstream endobj`
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${object}\n`;
+  }
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets
+    .slice(1)
+    .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
+    .join("");
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, "binary");
+};
+
+export const exportReportExcel = async (user, query = {}) => {
+  ensurePermission(user, PERMISSIONS.REPORTS_EXPORT, "No tienes permiso para exportar informes.");
+  const data = await readDb();
+  const report = buildReportPayload(data, user, query.type || "general", query);
+  await persistReport(data, user, report);
+  await logReportDownload(data, user, report.id, "excel");
+  const xlsx = await reportToExcelJs(report);
+  if (xlsx) {
+    return {
+      filename: `informe-generacion-de-gloria-${report.generatedAt.slice(0, 10)}.xlsx`,
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      content: xlsx
+    };
+  }
+  return {
+    filename: `informe-generacion-de-gloria-${report.generatedAt.slice(0, 10)}.xls`,
+    contentType: "application/vnd.ms-excel; charset=utf-8",
+    content: reportToExcelXml(report)
+  };
+};
+
+export const exportReportPdf = async (user, query = {}) => {
+  ensurePermission(user, PERMISSIONS.REPORTS_EXPORT, "No tienes permiso para exportar informes.");
+  const data = await readDb();
+  const report = buildReportPayload(data, user, query.type || "general", query);
+  await persistReport(data, user, report);
+  await logReportDownload(data, user, report.id, "pdf");
+  return {
+    filename: `informe-generacion-de-gloria-${report.generatedAt.slice(0, 10)}.pdf`,
+    content: buildSimplePdf(report)
+  };
+};
+
+export const resetUserPassword = async (user, userId) => {
+  ensurePermission(user, PERMISSIONS.USERS_MANAGE, "Solo el administrador puede resetear contrasenas.");
+  const data = await readDb();
+  const index = data.users.findIndex((item) => item.id === userId);
+  if (index === -1) {
+    const error = new Error("Usuario no encontrado.");
+    error.status = 404;
+    throw error;
+  }
+  const temporaryPassword = `Gdg-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}*`;
+  data.users[index] = {
+    ...data.users[index],
+    passwordHash: hashPassword(temporaryPassword),
+    mustChangePassword: true,
+    updatedAt: nowIso()
+  };
+  logActivity(data, user, "user.password_reset", "user", userId, {});
+  await writeDb(data);
+  return { user: sanitizeUserWithAssignments(data, data.users[index]), temporaryPassword };
+};
+
+export const changeOwnPassword = async (user, payload) => {
+  const data = await readDb();
+  const index = data.users.findIndex((item) => item.id === user.id);
+  if (index === -1) {
+    const error = new Error("Usuario no encontrado.");
+    error.status = 404;
+    throw error;
+  }
+  const currentPassword = String(payload.currentPassword || "");
+  const nextPassword = String(payload.newPassword || "");
+  if (!comparePassword(currentPassword, data.users[index].passwordHash)) {
+    const error = new Error("La contrasena actual no es correcta.");
+    error.status = 400;
+    throw error;
+  }
+  if (nextPassword.length < 8) {
+    const error = new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+    error.status = 400;
+    throw error;
+  }
+  data.users[index] = {
+    ...data.users[index],
+    passwordHash: hashPassword(nextPassword),
+    mustChangePassword: false,
+    updatedAt: nowIso()
+  };
+  logActivity(data, user, "auth.password_change", "user", user.id, {});
+  await writeDb(data);
+  return sanitizeUser(data.users[index]);
 };
 
 export const exportYouthsExcelXml = async (user) => {

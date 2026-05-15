@@ -70,7 +70,17 @@ const normalizeData = (data) => ({
     ? data.attendanceSessions
     : [],
   interactions: Array.isArray(data.interactions) ? data.interactions : [],
-  alerts: Array.isArray(data.alerts) ? data.alerts : []
+  alerts: Array.isArray(data.alerts) ? data.alerts : [],
+  mentorAssignments: Array.isArray(data.mentorAssignments)
+    ? data.mentorAssignments
+    : [],
+  visits: Array.isArray(data.visits) ? data.visits : [],
+  calls: Array.isArray(data.calls) ? data.calls : [],
+  meetings: Array.isArray(data.meetings) ? data.meetings : [],
+  pastoralNotes: Array.isArray(data.pastoralNotes) ? data.pastoralNotes : [],
+  reports: Array.isArray(data.reports) ? data.reports : [],
+  reportDownloads: Array.isArray(data.reportDownloads) ? data.reportDownloads : [],
+  activityLogs: Array.isArray(data.activityLogs) ? data.activityLogs : []
 });
 
 const ensureLocalFile = async () => {

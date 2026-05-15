@@ -2,11 +2,10 @@
 
 ## Fuente de verdad
 
-El rol principal vive en el modulo Miembros, campo `memberRole`.
+El rol ministerial vive en el modulo Miembros, campo `memberRole`. El rol de acceso vive en `users.role`.
 
 Roles ministeriales soportados:
 
-- `Administrador`
 - `Pastor`
 - `Lider`
 - `Mentor`
@@ -16,7 +15,7 @@ Cada vez que se crea, edita o importa un miembro, el backend ejecuta sincronizac
 
 1. Normaliza el rol ministerial.
 2. Busca un usuario vinculado por `memberId` o por correo.
-3. Crea el usuario si el miembro tiene correo y no existe cuenta.
+3. Crea el usuario si el miembro tiene correo, no existe cuenta y el rol ministerial es `Pastor`, `Lider` o `Mentor`.
 4. Actualiza `fullName`, `email`, `role`, `memberRole` y `active`.
 5. Recalcula asignaciones.
 6. Desactiva cuentas vinculadas a miembros eliminados.
@@ -29,11 +28,11 @@ El sistema traduce el rol ministerial a una clave interna:
 
 | Miembro | Sistema |
 | --- | --- |
-| Administrador | `ADMIN` |
 | Pastor | `PASTOR` |
 | Lider | `LIDER` |
 | Mentor | `MENTOR` |
-| Miembro | `MIEMBRO` |
+| Secretaria | `SECRETARIA` |
+| Miembro | sin acceso al CRM |
 
 ## Permisos
 
@@ -59,6 +58,8 @@ Permisos principales:
 - `users:view`
 - `users:manage`
 - `reports:export`
+- `reports:view`
+- `reports:generate`
 - `settings:manage`
 
 ## Alcance por rol
@@ -94,10 +95,14 @@ Permisos principales:
 - atiende alertas de sus asignados
 - no accede a usuarios ni configuracion global
 
-`MIEMBRO`
+`SECRETARIA`
 
-- ve su propio registro, seguimientos y alertas visibles para su cuenta
-- no crea, edita ni elimina registros
+- ve dashboard, miembros, asistencia, seguimientos, alertas e informes
+- crea y edita miembros
+- registra asistencia y seguimientos
+- genera y descarga informes PDF/Excel
+- no elimina registros criticos
+- no gestiona roles, permisos, configuracion sensible ni auditoria
 
 ## Asignacion de mentores
 
