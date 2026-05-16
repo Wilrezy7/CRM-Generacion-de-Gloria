@@ -19,7 +19,28 @@ end $$;
 
 do $$
 begin
-  create type public.member_role as enum ('Miembro', 'Mentor', 'Lider', 'Pastor');
+  create type public.member_role as enum (
+    'Miembro',
+    'Visitante',
+    'Nuevo',
+    'Congregante',
+    'Mentor',
+    'Lider',
+    'Pastor',
+    'Secretaria',
+    'Administrador'
+  );
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter type public.member_role add value if not exists 'Visitante';
+  alter type public.member_role add value if not exists 'Nuevo';
+  alter type public.member_role add value if not exists 'Congregante';
+  alter type public.member_role add value if not exists 'Secretaria';
+  alter type public.member_role add value if not exists 'Administrador';
 exception
   when duplicate_object then null;
 end $$;

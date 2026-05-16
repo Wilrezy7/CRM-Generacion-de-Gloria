@@ -88,7 +88,7 @@ Roles ministeriales del modulo Miembros:
 - `Mentor`
 - `Miembro`
 
-Los permisos reales se documentan en [docs/rbac.md](docs/rbac.md). Los usuarios se sincronizan automaticamente desde miembros con correo cuando su rol ministerial es `Pastor`, `Lider` o `Mentor`. La secretaria se gestiona como usuario administrativo manual con permisos de operacion e informes, sin acceso a auditoria ni permisos criticos.
+Los permisos reales se documentan en [docs/rbac.md](docs/rbac.md). Los usuarios se sincronizan automaticamente desde miembros con correo cuando su rol ministerial es `Administrador`, `Pastor`, `Lider`, `Mentor` o `Secretaria`. `Miembro`, `Visitante`, `Nuevo` y `Congregante` no generan credenciales ni aparecen en Usuarios.
 
 ### 6. Administracion y auditoria
 

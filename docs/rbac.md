@@ -9,13 +9,17 @@ Roles ministeriales soportados:
 - `Pastor`
 - `Lider`
 - `Mentor`
+- `Secretaria`
 - `Miembro`
+- `Visitante`
+- `Nuevo`
+- `Congregante`
 
 Cada vez que se crea, edita o importa un miembro, el backend ejecuta sincronizacion con usuarios:
 
 1. Normaliza el rol ministerial.
 2. Busca un usuario vinculado por `memberId` o por correo.
-3. Crea el usuario si el miembro tiene correo, no existe cuenta y el rol ministerial es `Pastor`, `Lider` o `Mentor`.
+3. Crea el usuario si el miembro tiene correo, no existe cuenta y el rol ministerial es `Administrador`, `Pastor`, `Lider`, `Mentor` o `Secretaria`.
 4. Actualiza `fullName`, `email`, `role`, `memberRole` y `active`.
 5. Recalcula asignaciones.
 6. Desactiva cuentas vinculadas a miembros eliminados.
@@ -33,6 +37,9 @@ El sistema traduce el rol ministerial a una clave interna:
 | Mentor | `MENTOR` |
 | Secretaria | `SECRETARIA` |
 | Miembro | sin acceso al CRM |
+| Visitante | sin acceso al CRM |
+| Nuevo | sin acceso al CRM |
+| Congregante | sin acceso al CRM |
 
 ## Permisos
 
@@ -114,6 +121,18 @@ Fuente del selector:
 - con cuenta sincronizada automaticamente (`accountId`)
 
 Si un miembro pasa a `Pastor`, `Lider` o `Mentor`, aparece como persona asignable para mentoreo tras guardar. Si cambia a otro rol o queda inactivo, deja de aparecer y sus asignaciones se limpian al sincronizar.
+
+## Acceso al modulo Usuarios
+
+El modulo Usuarios filtra exclusivamente estos roles de sistema:
+
+- `ADMIN`
+- `PASTOR`
+- `LIDER`
+- `MENTOR`
+- `SECRETARIA`
+
+Los miembros con rol ministerial `Miembro`, `Visitante`, `Nuevo` o `Congregante` no generan credenciales, no aparecen en Usuarios y no pueden iniciar sesion. Si una persona tenia cuenta y su rol cambia a uno de esos roles no autorizados, el backend desactiva el acceso y revoca sus asignaciones.
 
 ## Validacion backend y frontend
 

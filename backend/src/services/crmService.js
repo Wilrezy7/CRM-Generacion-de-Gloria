@@ -9,6 +9,7 @@ import {
 } from "../utils/helpers.js";
 import { comparePassword, hashPassword } from "../utils/security.js";
 import {
+  ALLOWED_SYSTEM_ROLES,
   MEMBER_ROLES,
   PERMISSIONS,
   ROLE_LABELS,
@@ -47,6 +48,10 @@ const defaultSyncedPasswordHash = () => hashPassword("Cambio123*");
 
 const canHaveSystemAccount = (memberRole) =>
   Boolean(systemRoleFromMemberRole(memberRole));
+
+const isAllowedSystemUser = (user) =>
+  ALLOWED_SYSTEM_ROLES.includes(normalizeSystemRole(user?.role)) &&
+  (!user?.memberId || canHaveSystemAccount(user.memberRole));
 
 const logActivity = (data, user, action, entityType, entityId, metadata = {}) => {
   data.activityLogs = Array.isArray(data.activityLogs) ? data.activityLogs : [];
@@ -98,6 +103,7 @@ const syncUsersFromMembers = (data) => {
       if (account?.memberId === youth.id) {
         account.memberRole = youth.memberRole;
         account.active = false;
+        account.accessRevokedAt = nowIso();
         account.assignedYouthIds = [];
         account.updatedAt = nowIso();
       }
@@ -556,6 +562,11 @@ export const login = async ({ email, password }) => {
   if (!user || !comparePassword(String(password || ""), user.passwordHash)) {
     const error = new Error("Credenciales invalidas.");
     error.status = 401;
+    throw error;
+  }
+  if (!isAllowedSystemUser(user)) {
+    const error = new Error("Este registro no tiene acceso autorizado al CRM.");
+    error.status = 403;
     throw error;
   }
   if (user.active === false) {
@@ -1102,7 +1113,9 @@ export const listUsers = async (user) => {
   const data = await readDb();
   syncUsersFromMembers(data);
   await writeDb(data);
-  return data.users.map((item) => sanitizeUserWithAssignments(data, item));
+  return data.users
+    .filter(isAllowedSystemUser)
+    .map((item) => sanitizeUserWithAssignments(data, item));
 };
 
 export const createUser = async (user, payload) => {

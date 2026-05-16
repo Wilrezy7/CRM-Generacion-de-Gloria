@@ -6,12 +6,18 @@ export const SYSTEM_ROLES = {
   SECRETARIA: "SECRETARIA"
 };
 
+export const ALLOWED_SYSTEM_ROLES = Object.values(SYSTEM_ROLES);
+
 export const MEMBER_ROLES = {
   ADMIN: "Administrador",
   PASTOR: "Pastor",
   LIDER: "Lider",
   MENTOR: "Mentor",
-  MIEMBRO: "Miembro"
+  SECRETARIA: "Secretaria",
+  MIEMBRO: "Miembro",
+  VISITANTE: "Visitante",
+  NUEVO: "Nuevo",
+  CONGREGANTE: "Congregante"
 };
 
 export const ROLE_LABELS = {
@@ -127,8 +133,14 @@ export const normalizeMemberRole = (value, fallback = null) => {
     colider: MEMBER_ROLES.LIDER,
     mentor: MEMBER_ROLES.MENTOR,
     mentora: MEMBER_ROLES.MENTOR,
+    secretaria: MEMBER_ROLES.SECRETARIA,
+    secretario: MEMBER_ROLES.SECRETARIA,
     miembro: MEMBER_ROLES.MIEMBRO,
-    integrante: MEMBER_ROLES.MIEMBRO
+    integrante: MEMBER_ROLES.MIEMBRO,
+    visitante: MEMBER_ROLES.VISITANTE,
+    nuevo: MEMBER_ROLES.NUEVO,
+    nueva: MEMBER_ROLES.NUEVO,
+    congregante: MEMBER_ROLES.CONGREGANTE
   };
   return map[normalizeKey(value)] || fallback;
 };
@@ -158,7 +170,11 @@ export const systemRoleFromMemberRole = (memberRole) => {
     [MEMBER_ROLES.PASTOR]: SYSTEM_ROLES.PASTOR,
     [MEMBER_ROLES.LIDER]: SYSTEM_ROLES.LIDER,
     [MEMBER_ROLES.MENTOR]: SYSTEM_ROLES.MENTOR,
-    [MEMBER_ROLES.MIEMBRO]: null
+    [MEMBER_ROLES.SECRETARIA]: SYSTEM_ROLES.SECRETARIA,
+    [MEMBER_ROLES.MIEMBRO]: null,
+    [MEMBER_ROLES.VISITANTE]: null,
+    [MEMBER_ROLES.NUEVO]: null,
+    [MEMBER_ROLES.CONGREGANTE]: null
   }[normalized];
 };
 

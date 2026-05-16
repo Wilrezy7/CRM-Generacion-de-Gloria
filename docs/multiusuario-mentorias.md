@@ -12,16 +12,16 @@ Roles de acceso al sistema:
 - `MENTOR`
 - `SECRETARIA`
 
-`Miembro` queda como rol ministerial dentro del modulo Miembros y no recibe acceso al CRM por defecto.
+`Miembro`, `Visitante`, `Nuevo` y `Congregante` quedan como roles ministeriales sin acceso al CRM por defecto.
 
 `SECRETARIA` es un rol administrativo operativo: puede capturar miembros, asistencia, seguimientos e informes, pero no ve auditoria de seguridad ni administra roles criticos.
 
 ## Flujo de usuarios
 
 1. El administrador crea o importa miembros.
-2. Si un miembro cambia a `Mentor`, `Lider` o `Pastor`, el backend sincroniza una cuenta en `users`.
+2. Si un miembro cambia a `Mentor`, `Lider`, `Pastor`, `Secretaria` o `Administrador`, el backend sincroniza una cuenta en `users`.
 3. La cuenta queda activa, con `mustChangePassword = true`.
-4. Si el miembro vuelve a `Miembro` o queda inactivo, su cuenta vinculada se desactiva.
+4. Si el miembro cambia a `Miembro`, `Visitante`, `Nuevo`, `Congregante` o queda inactivo, su cuenta vinculada se desactiva y no aparece en el modulo Usuarios.
 5. El administrador puede crear usuarios manuales, resetear contrasenas y cambiar roles.
 
 ## Asignacion de mentorias

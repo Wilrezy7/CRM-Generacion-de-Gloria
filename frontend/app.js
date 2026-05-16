@@ -23,6 +23,7 @@ const tabs = [
 
 const tokenKey = "gdg_crm_token";
 const themeKey = "gdg_crm_theme";
+const allowedSystemRoles = ["ADMIN", "PASTOR", "LIDER", "MENTOR", "SECRETARIA"];
 
 const classNames = (...values) => values.filter(Boolean).join(" ");
 
@@ -50,7 +51,13 @@ const normalizeMemberRole = (value) => {
     lider: "Lider",
     co_lider: "Lider",
     colider: "Lider",
-    mentor: "Mentor"
+    mentor: "Mentor",
+    secretaria: "Secretaria",
+    secretario: "Secretaria",
+    visitante: "Visitante",
+    nuevo: "Nuevo",
+    nueva: "Nuevo",
+    congregante: "Congregante"
   };
   return map[normalized] || "Miembro";
 };
@@ -226,6 +233,9 @@ const badgeClasses = {
   Administrador: "bg-brand-500/15 text-brand-800 dark:text-brand-300",
   Pastor: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
   Miembro: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+  Visitante: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+  Nuevo: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+  Congregante: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   Lider: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   Mentor: "bg-sky-500/15 text-sky-700 dark:text-sky-300"
 };
@@ -494,7 +504,8 @@ const App = () => {
 
   const loadUsers = async (authToken = token) => {
     if (hasPermission(user, "users:view")) {
-      setUsers(await request("/users", { token: authToken }));
+      const accounts = await request("/users", { token: authToken });
+      setUsers(accounts.filter((account) => allowedSystemRoles.includes(account.role)));
     }
   };
 
@@ -527,7 +538,8 @@ const App = () => {
         loadReports(authToken, me.user)
       ]);
       if (hasPermission(me.user, "users:view")) {
-        setUsers(await request("/users", { token: authToken }));
+        const accounts = await request("/users", { token: authToken });
+        setUsers(accounts.filter((account) => allowedSystemRoles.includes(account.role)));
         setActivityLogs(await request("/activity-logs", { token: authToken }));
       }
       setError("");
@@ -1560,7 +1572,11 @@ const App = () => {
             <option value="Pastor">Pastor</option>
             <option value="Lider">Lider</option>
             <option value="Mentor">Mentor</option>
+            <option value="Secretaria">Secretaria</option>
             <option value="Miembro">Miembro</option>
+            <option value="Visitante">Visitante</option>
+            <option value="Nuevo">Nuevo</option>
+            <option value="Congregante">Congregante</option>
           </${Select}>
           <${Input} label="Direccion" name="address" defaultValue=${editingYouth?.address || ""} />
           <${Select} label="Estado" name="status" defaultValue=${editingYouth?.status || "activo"}>

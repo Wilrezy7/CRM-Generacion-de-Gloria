@@ -45,7 +45,7 @@ Roles ministeriales en miembros:
 - `Mentor`
 - `Miembro`
 
-Cuando un miembro cambia a `Pastor`, `Lider` o `Mentor`, el backend crea o activa su usuario con `mustChangePassword = true`. Si vuelve a `Miembro` o queda inactivo, pierde acceso al CRM. Ver [rbac.md](rbac.md).
+Cuando un miembro cambia a `Administrador`, `Pastor`, `Lider`, `Mentor` o `Secretaria`, el backend crea o activa su usuario con `mustChangePassword = true`. Si cambia a `Miembro`, `Visitante`, `Nuevo`, `Congregante` o queda inactivo, pierde acceso al CRM y se oculta del modulo Usuarios. Ver [rbac.md](rbac.md).
 
 `SECRETARIA` se crea desde administracion de usuarios y tiene permisos operativos para captura e informes, sin acceso a auditoria ni gestion de permisos.
 
