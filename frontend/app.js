@@ -23,12 +23,69 @@ const tabs = [
 
 const tokenKey = "gdg_crm_token";
 const themeKey = "gdg_crm_theme";
+const logoSrc = "/assets/logo-generacion-gloria.png";
 const allowedSystemRoles = ["ADMIN", "PASTOR", "LIDER", "MENTOR", "SECRETARIA"];
+
+const navSections = [
+  {
+    title: "General",
+    items: [
+      { key: "dashboard", label: "Dashboard", icon: "layout-dashboard", permission: "dashboard:view" },
+      { key: "home", target: "dashboard", label: "Inicio", icon: "home", permission: "dashboard:view" }
+    ]
+  },
+  {
+    title: "Gestion",
+    items: [
+      { key: "youths", label: "Miembros", icon: "users-round", permission: "members:view" },
+      { key: "attendance", label: "Asistencia", icon: "calendar-check", permission: "attendance:view" },
+      { key: "interactions", label: "Seguimientos", icon: "message-square-heart", permission: "interactions:view" },
+      { key: "visits", label: "Mentorias", icon: "hand-heart", permission: "interactions:view" },
+      { key: "alerts", label: "Alertas", icon: "bell-ring", permission: "alerts:view" }
+    ]
+  },
+  {
+    title: "Pastoral",
+    items: [
+      { key: "visits", label: "Visitas", icon: "map-pin", permission: "interactions:view" },
+      { key: "calls", label: "Llamadas", icon: "phone-call", permission: "interactions:view" },
+      { key: "meetings", label: "Reuniones", icon: "calendar-days", permission: "interactions:view" },
+      { key: "notes", label: "Notas", icon: "notebook-pen", permission: "interactions:view" }
+    ]
+  },
+  {
+    title: "Administracion",
+    items: [
+      { key: "users", label: "Usuarios", icon: "user-cog", permission: "users:view" },
+      { key: "users", label: "Roles", icon: "shield-check", permission: "users:view" },
+      { key: "users", label: "Permisos", icon: "key-round", permission: "users:view" }
+    ]
+  },
+  {
+    title: "Reportes",
+    items: [
+      { key: "reports", label: "Informes", icon: "file-bar-chart", permission: "reports:view" },
+      { key: "reports", label: "Estadisticas", icon: "chart-no-axes-combined", permission: "reports:view" },
+      { key: "reports", label: "Exportaciones", icon: "download", permission: "reports:export" }
+    ]
+  },
+  {
+    title: "Configuracion",
+    items: [
+      { key: "activity", label: "Ajustes", icon: "settings", permission: "users:view" },
+      { key: "dashboard", label: "Perfil", icon: "circle-user-round", permission: "dashboard:view" },
+      { key: "dashboard", label: "Seguridad", icon: "lock-keyhole", permission: "dashboard:view" }
+    ]
+  }
+];
 
 const classNames = (...values) => values.filter(Boolean).join(" ");
 
 const hasPermission = (user, permission) =>
   Boolean(user?.permissions?.includes(permission));
+
+const Icon = ({ name, className = "h-5 w-5" }) =>
+  html`<i data-lucide=${name} className=${className}></i>`;
 
 const normalizeHeader = (value) =>
   String(value || "")
@@ -240,14 +297,16 @@ const badgeClasses = {
   Mentor: "bg-sky-500/15 text-sky-700 dark:text-sky-300"
 };
 
-const StatCard = ({ label, value, accent, detail }) => html`
-  <div className="panel fade-in rounded-2xl p-5 shadow-soft">
+const StatCard = ({ label, value, accent, detail, icon = "activity" }) => html`
+  <div className="panel fade-in group rounded-[22px] p-5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-xl">
     <div className="flex items-start justify-between gap-4">
       <div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">${label}</p>
-        <h3 className="mt-2 font-heading text-3xl font-extrabold tracking-tight">${value}</h3>
+        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">${label}</p>
+        <h3 className="mt-2 font-heading text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white">${value}</h3>
       </div>
-      <div className=${classNames("h-12 w-12 rounded-2xl", accent)}></div>
+      <div className=${classNames("flex h-12 w-12 items-center justify-center rounded-2xl text-slate-900 ring-1 ring-black/5 dark:text-white", accent)}>
+        <${Icon} name=${icon} className="h-5 w-5" />
+      </div>
     </div>
     <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">${detail}</p>
   </div>
@@ -291,11 +350,13 @@ const MiniBarChart = ({ items }) => {
 const Modal = ({ open, title, onClose, children, wide = false }) => {
   if (!open) return null;
   return html`
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
-      <div className=${classNames("panel fade-in max-h-[90vh] overflow-auto rounded-3xl shadow-soft", wide ? "w-full max-w-5xl" : "w-full max-w-2xl")}>
-        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200/70 bg-white/80 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-night/80">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+      <div className=${classNames("panel fade-in max-h-[90vh] overflow-auto rounded-[28px] shadow-2xl", wide ? "w-full max-w-5xl" : "w-full max-w-2xl")}>
+        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200/70 bg-white/90 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-night/90">
           <h3 className="font-heading text-xl font-bold">${title}</h3>
-          <button className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900" onClick=${onClose}>Cerrar</button>
+          <button className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white transition hover:scale-105 dark:bg-white dark:text-slate-900" onClick=${onClose} aria-label="Cerrar">
+            <${Icon} name="x" className="h-5 w-5" />
+          </button>
         </div>
         <div className="p-6">${children}</div>
       </div>
@@ -336,7 +397,10 @@ const Textarea = ({ label, ...props }) => html`
 `;
 
 const EmptyState = ({ title, detail }) => html`
-  <div className="panel rounded-2xl p-10 text-center shadow-soft">
+  <div className="panel rounded-[24px] p-10 text-center shadow-soft">
+    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-700 dark:text-brand-300">
+      <${Icon} name="inbox" />
+    </div>
     <h3 className="font-heading text-lg font-bold">${title}</h3>
     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">${detail}</p>
   </div>
@@ -443,11 +507,30 @@ const App = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    window.lucide?.createIcons();
+  }, [activeTab, user, loading, sidebarCollapsed, mobileMenuOpen, notice, error]);
 
   const availableTabs = useMemo(
     () => tabs.filter((tab) => hasPermission(user, tab.permission)),
     [user]
   );
+
+  const visibleNavSections = useMemo(
+    () =>
+      navSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => hasPermission(user, item.permission))
+        }))
+        .filter((section) => section.items.length),
+    [user]
+  );
+
+  const currentTab = tabs.find((tab) => tab.key === activeTab) || tabs[0];
 
   const mentorOptions = useMemo(
     () =>
@@ -904,34 +987,34 @@ const App = () => {
 
   if (!user) {
     return html`
-      <main className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
+      <main className="grid min-h-screen bg-slate-50 dark:bg-night lg:grid-cols-[1.08fr_0.92fr]">
         <section className="relative hidden overflow-hidden bg-ink lg:block">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(132,151,74,0.28),transparent_32%),linear-gradient(135deg,_#101828,_#1e293b)]"></div>
+          <img src=${logoSrc} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(245,158,11,0.34),transparent_30%),linear-gradient(135deg,_rgba(8,17,31,0.92),_rgba(15,23,42,0.84))]"></div>
           <div className="relative flex h-full flex-col justify-between p-12 text-white">
             <div className="flex items-center gap-4">
-              <img src="/assets/brand.svg" alt="Generacion de Gloria" className="h-14 w-14 rounded-2xl" />
+              <img src=${logoSrc} alt="Generacion de Gloria" className="h-16 w-16 rounded-2xl object-cover ring-1 ring-white/20" />
               <div>
                 <p className="font-heading text-2xl font-extrabold">Generacion de Gloria</p>
-                <p className="text-sm text-slate-300">CRM pastoral del ministerio juvenil</p>
+                <p className="text-sm text-slate-300">CRM institucional pastoral</p>
               </div>
             </div>
             <div className="max-w-xl">
-              <p className="font-heading text-5xl font-extrabold leading-tight">
-                Seguimiento real, asistencia clara y trabajo pastoral ordenado.
+              <p className="font-heading text-5xl font-extrabold leading-tight tracking-tight">
+                Gestion pastoral moderna para equipos que cuidan personas.
               </p>
               <p className="mt-6 text-lg text-slate-300">
-                Una plataforma sobria para cuidar personas, coordinar lideres y detectar
-                oportunidades de acompanamiento con rapidez.
+                Un espacio limpio para coordinar miembros, mentorias, asistencia, alertas e informes con una experiencia de CRM profesional.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-4">
               ${[
-                ["Alertas activas", "Detecta 2 ausencias consecutivas"],
-                ["Roles seguros", "Permisos reales por rol ministerial"],
-                ["Exportacion", "Base de jovenes lista para Excel"]
+                ["Multiusuario", "Roles y permisos reales"],
+                ["Mentorias", "Seguimiento pastoral trazable"],
+                ["Informes", "PDF y Excel institucional"]
               ].map(
                 ([title, text]) => html`
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                  <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
                     <p className="font-semibold">${title}</p>
                     <p className="mt-2 text-sm text-slate-300">${text}</p>
                   </div>
@@ -941,8 +1024,9 @@ const App = () => {
           </div>
         </section>
         <section className="flex items-center justify-center px-6 py-12">
-          <div className="w-full max-w-md panel rounded-[28px] p-8 shadow-soft">
+          <div className="w-full max-w-md panel rounded-[32px] p-8 shadow-soft">
             <div className="mb-8">
+              <img src=${logoSrc} alt="Generacion de Gloria" className="mb-6 h-20 w-20 rounded-3xl object-cover shadow-soft lg:hidden" />
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
                 Acceso seguro
               </p>
@@ -1009,94 +1093,123 @@ const App = () => {
   }
 
   return html`
-    <div className="min-h-screen p-4 lg:p-6">
-      <div className="mx-auto grid max-w-[1600px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="panel rounded-[28px] p-5 shadow-soft">
-          <div className="flex items-center gap-4">
-            <img src="/assets/brand.svg" alt="Marca" className="h-14 w-14 rounded-2xl" />
-            <div>
-              <p className="font-heading text-xl font-extrabold">Generacion de Gloria</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">CRM ministerial</p>
+    <div className="app-shell min-h-screen">
+      ${mobileMenuOpen && html`<div className="fixed inset-0 z-30 bg-slate-950/50 backdrop-blur-sm lg:hidden" onClick=${() => setMobileMenuOpen(false)}></div>`}
+      <aside className=${classNames(
+        "sidebar-shell fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200/70 bg-white/92 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-night/92",
+        sidebarCollapsed ? "lg:w-[92px]" : "lg:w-[292px]",
+        mobileMenuOpen ? "w-[292px] translate-x-0" : "w-[292px] -translate-x-full lg:translate-x-0"
+      )}>
+        <div className="flex h-20 items-center gap-3 border-b border-slate-200/70 px-4 dark:border-slate-800">
+          <img src=${logoSrc} alt="Generacion de Gloria" className="h-12 w-12 rounded-2xl object-cover shadow-soft" />
+          ${!sidebarCollapsed && html`
+            <div className="min-w-0">
+              <p className="truncate font-heading text-lg font-extrabold">Generacion de Gloria</p>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">CRM institucional</p>
             </div>
-          </div>
-            <div className="mt-8 rounded-3xl bg-ink px-4 py-5 text-white dark:bg-white dark:text-ink">
-              <p className="text-sm text-slate-300 dark:text-slate-600">Sesion activa</p>
-              <p className="mt-2 font-heading text-xl font-extrabold">${user.fullName}</p>
-              <span className=${classNames("mt-3 inline-flex rounded-full px-3 py-1 text-xs font-bold", badgeClasses[user.role])}>${user.roleLabel || user.role}</span>
-              ${systemInfo?.storage &&
-              html`
-                <div className="mt-4 rounded-2xl bg-white/10 px-3 py-3 text-xs text-slate-200 dark:bg-slate-900 dark:text-slate-300">
-                  <div className="font-semibold uppercase tracking-[0.18em]">
-                    Datos ${systemInfo.storage.driver === "supabase" ? "en Supabase" : "en archivo local"}
-                  </div>
-                  ${systemInfo.storage.intendedDriver === "supabase" &&
-                  systemInfo.storage.driver !== "supabase" &&
-                  html`<div className="mt-2 text-[11px] text-amber-200 dark:text-amber-300">Supabase esta configurado, pero el sistema esta usando fallback local.</div>`}
-                  ${systemInfo.storage.pendingSupabaseConfig &&
-                  html`<div className="mt-2 text-[11px] text-amber-200 dark:text-amber-300">Falta completar URL o clave segura de Supabase.</div>`}
-                  ${systemInfo.storage.lastError &&
-                  html`<div className="mt-2 break-all text-[11px] text-rose-200 dark:text-rose-300">${systemInfo.storage.lastError}</div>`}
+          `}
+          <button className="ml-auto hidden h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 transition hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 lg:flex" onClick=${() => setSidebarCollapsed(!sidebarCollapsed)} aria-label="Colapsar menu">
+            <${Icon} name=${sidebarCollapsed ? "panel-left-open" : "panel-left-close"} />
+          </button>
+        </div>
+
+        <div className="scroll-thin flex-1 overflow-y-auto px-3 py-4">
+          ${visibleNavSections.map((section) => html`
+            <div className="mb-5">
+              ${!sidebarCollapsed && html`<p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">${section.title}</p>`}
+              <div className="space-y-1">
+                ${section.items.map((item) => html`
+                  <button
+                    className=${classNames(
+                      "nav-item flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold",
+                      activeTab === item.key
+                        ? "bg-brand-600 text-white shadow-lg shadow-brand-900/10"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white",
+                      sidebarCollapsed && "justify-center"
+                    )}
+                    title=${item.label}
+                    onClick=${() => { setActiveTab(item.target || item.key); setMobileMenuOpen(false); }}
+                  >
+                    <${Icon} name=${item.icon} className="h-5 w-5 shrink-0" />
+                    ${!sidebarCollapsed && html`<span className="truncate">${item.label}</span>`}
+                  </button>
+                `)}
+              </div>
+            </div>
+          `)}
+        </div>
+
+        <div className="border-t border-slate-200/70 p-3 dark:border-slate-800">
+          <div className=${classNames("rounded-[22px] bg-slate-950 p-3 text-white dark:bg-white dark:text-slate-950", sidebarCollapsed && "px-2")}>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-500 text-white">
+                <${Icon} name="user-round" />
+              </div>
+              ${!sidebarCollapsed && html`
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">${user.fullName}</p>
+                  <p className="truncate text-xs opacity-70">${user.roleLabel || user.role}</p>
                 </div>
               `}
             </div>
-          <nav className="mt-6 space-y-2">
-            ${availableTabs.map(
-              (tab) => html`
-                <button
-                  className=${classNames(
-                    "flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold transition",
-                    activeTab === tab.key
-                      ? "bg-brand-600 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  )}
-                  onClick=${() => setActiveTab(tab.key)}
-                >
-                  <span>${tab.label}</span>
-                </button>
-              `
-            )}
-          </nav>
-          <div className="mt-8 flex gap-3">
-            <button
-              className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold dark:bg-slate-900"
-              onClick=${() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              ${theme === "dark" ? "Modo claro" : "Modo oscuro"}
+          </div>
+          <div className=${classNames("mt-3 flex gap-2", sidebarCollapsed && "flex-col")}>
+            <button className="flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-100 text-sm font-semibold transition hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800" onClick=${() => setTheme(theme === "dark" ? "light" : "dark")} title="Cambiar tema">
+              <${Icon} name=${theme === "dark" ? "sun" : "moon"} />
+              ${!sidebarCollapsed && html`<span>${theme === "dark" ? "Claro" : "Oscuro"}</span>`}
             </button>
-            <button className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white" onClick=${logout}>
-              Salir
+            <button className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-rose-500 px-3 text-sm font-semibold text-white transition hover:bg-rose-600" onClick=${logout} title="Salir">
+              <${Icon} name="log-out" />
+              ${!sidebarCollapsed && html`<span>Salir</span>`}
             </button>
           </div>
-        </aside>
+        </div>
+      </aside>
 
-        <main className="space-y-4">
+      <div className=${classNames("min-h-screen p-4 transition-[padding] duration-200 lg:p-6", sidebarCollapsed ? "lg:pl-[116px]" : "lg:pl-[316px]")}>
+        <main className="mx-auto max-w-[1600px] space-y-4">
           <header className="panel rounded-[28px] px-5 py-4 shadow-soft">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm uppercase tracking-[0.18em] text-brand-700 dark:text-brand-300">
-                  Ministerio juvenil
-                </p>
-                <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-tight">
-                  ${activeTab === "dashboard" ? "Panel principal" : tabs.find((tab) => tab.key === activeTab)?.label}
-                </h1>
+              <div className="flex items-center gap-4">
+                <button className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 transition hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 lg:hidden" onClick=${() => setMobileMenuOpen(true)} aria-label="Abrir menu">
+                  <${Icon} name="menu" />
+                </button>
+                <div>
+                  <p className="text-sm uppercase tracking-[0.18em] text-brand-700 dark:text-brand-300">
+                    Ministerio juvenil
+                  </p>
+                  <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-tight">
+                    ${activeTab === "dashboard" ? "Panel principal" : currentTab?.label}
+                  </h1>
+                </div>
               </div>
-              ${notice &&
-              html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">${notice}</div>`}
+              <div className="flex flex-wrap items-center gap-3">
+                ${systemInfo?.storage &&
+                html`<span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 dark:bg-slate-900 dark:text-slate-300">${systemInfo.storage.driver === "supabase" ? "Supabase" : "Local"}</span>`}
+                ${notice &&
+                html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">${notice}</div>`}
+              </div>
             </div>
             ${error &&
             html`<div className="mt-4 rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
           </header>
 
           ${loading &&
-          html`<div className="panel rounded-2xl p-5 text-sm text-slate-500 dark:text-slate-400">Cargando informacion...</div>`}
+          html`
+            <div className="grid gap-4 md:grid-cols-3">
+              ${[1, 2, 3].map(() => html`<div className="panel skeleton h-28 rounded-[22px] p-5 shadow-soft"></div>`)}
+            </div>
+          `}
 
           ${activeTab === "dashboard" && dashboard && html`
             <section className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <${StatCard} label="Jovenes activos" value=${dashboard.summary.activeYouths} accent="bg-brand-500/20" detail="Base visible segun tu rol" />
-                <${StatCard} label="Asistencia semanal" value=${`${dashboard.summary.weeklyAttendance}%`} accent="bg-sky-500/20" detail="Promedio de reuniones de la semana" />
-                <${StatCard} label="Alertas pendientes" value=${dashboard.summary.pendingAlerts} accent="bg-amber-500/20" detail="Casos que requieren seguimiento" />
-                <${StatCard} label="Seguimientos del mes" value=${dashboard.summary.followUpsThisMonth} accent="bg-emerald-500/20" detail="Interacciones registradas este mes" />
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+                <${StatCard} label="Miembros activos" value=${dashboard.summary.activeYouths} accent="bg-brand-500/15" icon="users-round" detail="Base visible segun tu rol" />
+                <${StatCard} label="Asistencia semanal" value=${`${dashboard.summary.weeklyAttendance}%`} accent="bg-sky-500/15" icon="calendar-check" detail="Promedio semanal" />
+                <${StatCard} label="Mentorias activas" value=${dashboard.summary.assignedMembers || 0} accent="bg-emerald-500/15" icon="hand-heart" detail="Miembros asignados" />
+                <${StatCard} label="Seguimientos pendientes" value=${dashboard.summary.followUpsThisMonth} accent="bg-violet-500/15" icon="message-square-heart" detail="Registros del mes" />
+                <${StatCard} label="Alertas" value=${dashboard.summary.pendingAlerts} accent="bg-amber-500/15" icon="bell-ring" detail="Casos por atender" />
+                <${StatCard} label="Lideres activos" value=${dashboard.summary.activeMentors || 0} accent="bg-fuchsia-500/15" icon="shield-check" detail="Equipo con acceso" />
               </div>
               <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
                 <${MiniBarChart} items=${dashboard.attendanceTrend} />
@@ -1193,9 +1306,9 @@ const App = () => {
               </div>
               ${youths.length
                 ? html`
-                    <div className="panel scroll-thin overflow-auto rounded-2xl shadow-soft">
-                      <table className="min-w-full text-sm">
-                        <thead className="bg-slate-100/90 text-left dark:bg-slate-900">
+                    <div className="panel scroll-thin overflow-auto rounded-[24px] shadow-soft">
+                      <table className="data-table min-w-full text-sm">
+                        <thead className="sticky top-0 bg-slate-100/95 text-left backdrop-blur dark:bg-slate-900/95">
                           <tr>
                             ${["Nombre", "Cedula", "Celular", "Nacimiento", "Bautizado", "Rol", "Estado", "Acciones"].map(
                               (head) => html`<th className="px-4 py-4 font-semibold">${head}</th>`

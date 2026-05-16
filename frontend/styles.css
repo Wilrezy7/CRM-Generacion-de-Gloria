@@ -9,15 +9,23 @@
 body {
   font-family: "Plus Jakarta Sans", sans-serif;
   background-image:
-    radial-gradient(circle at top left, rgba(132, 151, 74, 0.16), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.12), transparent 22%);
+    radial-gradient(circle at top left, rgba(132, 151, 74, 0.10), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.08), transparent 22%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.98));
   min-height: 100vh;
 }
 
+.dark body {
+  background-image:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.12), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(132, 151, 74, 0.14), transparent 22%),
+    linear-gradient(180deg, #07111f, #0b1220);
+}
+
 .panel {
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(18px);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(20px);
 }
 
 .dark .panel {
@@ -46,6 +54,48 @@ body {
   animation: fade-in 320ms ease;
 }
 
+.app-shell {
+  min-height: 100vh;
+}
+
+.sidebar-shell {
+  transition: width 220ms ease, transform 220ms ease;
+}
+
+.nav-item {
+  transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.nav-item:hover {
+  transform: translateX(2px);
+}
+
+.data-table th {
+  white-space: nowrap;
+}
+
+.data-table tbody tr {
+  transition: background 160ms ease;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(132, 151, 74, 0.06);
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  animation: shimmer 1.4s infinite;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  content: "";
+  inset: 0;
+  position: absolute;
+  transform: translateX(-100%);
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -54,5 +104,11 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
   }
 }
