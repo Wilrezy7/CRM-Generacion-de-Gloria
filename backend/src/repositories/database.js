@@ -31,12 +31,21 @@ const normalizeData = (data) => ({
     ? data.users.map((user) => ({
         assignedYouthIds: [],
         active: true,
+        emailVerified: true,
+        mustChangePassword: false,
+        lastLogin: null,
         ...user,
+        email: String(user.email || "").toLowerCase(),
         assignedYouthIds: Array.isArray(user.assignedYouthIds)
           ? user.assignedYouthIds
           : []
       }))
     : [],
+  userSessions: Array.isArray(data.userSessions) ? data.userSessions : [],
+  passwordResets: Array.isArray(data.passwordResets) ? data.passwordResets : [],
+  emailVerifications: Array.isArray(data.emailVerifications) ? data.emailVerifications : [],
+  accessRequests: Array.isArray(data.accessRequests) ? data.accessRequests : [],
+  auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
   youths: Array.isArray(data.youths)
     ? data.youths.map((youth) => {
         const birthDate = inferBirthDate(youth);

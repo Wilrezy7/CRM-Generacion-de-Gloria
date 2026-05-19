@@ -3,7 +3,6 @@ import http from "node:http";
 import path from "node:path";
 import { env } from "./config/env.js";
 import { sendJson, sendText, notFound, getRequestBody, getQuery, setNoContent } from "./utils/http.js";
-import { signToken, verifyToken } from "./utils/jwt.js";
 import {
   attendAlert,
   bootstrapSystem,
@@ -24,21 +23,30 @@ import {
   listInteractions,
   listUsers,
   listYouths,
-  login,
-  sanitizeUser,
   updateUser,
   updateYouth
 } from "./services/crmService.js";
-import { getStorageInfo, probeStorage, readDb } from "./repositories/database.js";
+import { getStorageInfo, probeStorage } from "./repositories/database.js";
+import {
+  changePassword,
+  createAccessRequest,
+  listAuditLogs,
+  loginUser,
+  logoutSession,
+  refreshSession,
+  requestPasswordReset,
+  resetPassword,
+  validateAccessToken,
+  verifyAccessRequest
+} from "./services/authService.js";
+import { requirePermission } from "./services/rbac.js";
+import { checkRateLimit } from "./utils/rateLimit.js";
 
 const getUserFromRequest = async (req) => {
   const auth = req.headers.authorization || "";
   if (!auth.startsWith("Bearer ")) return null;
   const token = auth.slice(7);
-  const decoded = verifyToken(token, env.jwtSecret);
-  const data = await readDb();
-  const user = data.users.find((item) => item.id === decoded.sub);
-  return user ? sanitizeUser(user) : null;
+  return validateAccessToken(token);
 };
 
 const serveStatic = async (req, res) => {
@@ -101,7 +109,7 @@ const withHandler = async (res, action) => {
 
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
-    setNoContent(res);
+    setNoContent(res, req);
     return;
   }
 
@@ -161,10 +169,72 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === "/api/auth/login" && req.method === "POST") {
     await withHandler(res, async () => {
+      checkRateLimit(`login:${req.socket.remoteAddress}`);
       const body = await getRequestBody(req);
-      const user = await login(body);
-      const token = signToken({ sub: user.id, role: user.role }, env.jwtSecret);
-      sendJson(res, 200, { token, user });
+      sendJson(
+        res,
+        200,
+        await loginUser(body, {
+          ip: req.socket.remoteAddress,
+          userAgent: req.headers["user-agent"] || ""
+        })
+      );
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/auth/refresh" && req.method === "POST") {
+    await withHandler(res, async () => {
+      sendJson(
+        res,
+        200,
+        await refreshSession(await getRequestBody(req), {
+          ip: req.socket.remoteAddress,
+          userAgent: req.headers["user-agent"] || ""
+        })
+      );
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+    await withHandler(res, async () => {
+      const auth = req.headers.authorization || "";
+      await logoutSession({
+        accessToken: auth.startsWith("Bearer ") ? auth.slice(7) : "",
+        ...(await getRequestBody(req))
+      });
+      setNoContent(res, req);
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/auth/forgot-password" && req.method === "POST") {
+    await withHandler(res, async () => {
+      checkRateLimit(`forgot:${req.socket.remoteAddress}`);
+      sendJson(res, 200, await requestPasswordReset(await getRequestBody(req)));
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/auth/reset-password" && req.method === "POST") {
+    await withHandler(res, async () => {
+      sendJson(res, 200, await resetPassword(await getRequestBody(req)));
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/access-requests" && req.method === "POST") {
+    await withHandler(res, async () => {
+      checkRateLimit(`access-request:${req.socket.remoteAddress}`);
+      sendJson(res, 201, await createAccessRequest(await getRequestBody(req)));
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/access-requests/verify" && req.method === "POST") {
+    await withHandler(res, async () => {
+      sendJson(res, 200, await verifyAccessRequest(await getRequestBody(req)));
     });
     return;
   }
@@ -181,39 +251,51 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 200, { user, system: { storage: getStorageInfo() } });
         return;
       }
+      if (url.pathname === "/api/auth/change-password" && req.method === "POST") {
+        sendJson(res, 200, await changePassword(user, await getRequestBody(req)));
+        return;
+      }
       if (url.pathname === "/api/dashboard" && req.method === "GET") {
+        requirePermission(user, "dashboard:read");
         sendJson(res, 200, await getDashboard(user));
         return;
       }
       if (url.pathname === "/api/youths" && req.method === "GET") {
+        requirePermission(user, "youths:read");
         sendJson(res, 200, await listYouths(user, getQuery(req)));
         return;
       }
       if (url.pathname === "/api/youths" && req.method === "POST") {
+        requirePermission(user, "youths:write");
         sendJson(res, 201, await createYouth(user, await getRequestBody(req)));
         return;
       }
       if (url.pathname.match(/^\/api\/youths\/[^/]+$/) && req.method === "PUT") {
+        requirePermission(user, "youths:write");
         const youthId = url.pathname.split("/").pop();
         sendJson(res, 200, await updateYouth(user, youthId, await getRequestBody(req)));
         return;
       }
       if (url.pathname.match(/^\/api\/youths\/[^/]+$/) && req.method === "DELETE") {
+        requirePermission(user, "youths:write");
         const youthId = url.pathname.split("/").pop();
         await deleteYouth(user, youthId);
-        setNoContent(res);
+        setNoContent(res, req);
         return;
       }
       if (url.pathname.match(/^\/api\/youths\/[^/]+\/timeline$/) && req.method === "GET") {
+        requirePermission(user, "youths:read");
         const youthId = url.pathname.split("/")[3];
         sendJson(res, 200, await getYouthTimeline(user, youthId));
         return;
       }
       if (url.pathname === "/api/attendance" && req.method === "GET") {
+        requirePermission(user, "attendance:read");
         sendJson(res, 200, await listAttendance(user));
         return;
       }
       if (url.pathname === "/api/attendance" && req.method === "POST") {
+        requirePermission(user, "attendance:write");
         sendJson(
           res,
           201,
@@ -222,42 +304,56 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (url.pathname === "/api/interactions" && req.method === "GET") {
+        requirePermission(user, "interactions:read");
         sendJson(res, 200, await listInteractions(user));
         return;
       }
       if (url.pathname === "/api/interactions" && req.method === "POST") {
+        requirePermission(user, "interactions:write");
         sendJson(res, 201, await createInteraction(user, await getRequestBody(req)));
         return;
       }
       if (url.pathname === "/api/alerts" && req.method === "GET") {
+        requirePermission(user, "alerts:read");
         sendJson(res, 200, await listAlerts(user));
         return;
       }
       if (url.pathname.match(/^\/api\/alerts\/[^/]+\/attend$/) && req.method === "PATCH") {
+        requirePermission(user, "alerts:read");
         const alertId = url.pathname.split("/")[3];
         sendJson(res, 200, await attendAlert(user, alertId));
         return;
       }
       if (url.pathname === "/api/users" && req.method === "GET") {
+        requirePermission(user, "users:write");
         sendJson(res, 200, await listUsers(user));
         return;
       }
       if (url.pathname === "/api/users" && req.method === "POST") {
+        requirePermission(user, "users:write");
         sendJson(res, 201, await createUser(user, await getRequestBody(req)));
         return;
       }
       if (url.pathname.match(/^\/api\/users\/[^/]+$/) && req.method === "PUT") {
+        requirePermission(user, "users:write");
         const userId = url.pathname.split("/").pop();
         sendJson(res, 200, await updateUser(user, userId, await getRequestBody(req)));
         return;
       }
       if (url.pathname.match(/^\/api\/users\/[^/]+$/) && req.method === "DELETE") {
+        requirePermission(user, "users:write");
         const userId = url.pathname.split("/").pop();
         await deleteUser(user, userId);
-        setNoContent(res);
+        setNoContent(res, req);
+        return;
+      }
+      if (url.pathname === "/api/audit-logs" && req.method === "GET") {
+        requirePermission(user, "users:write");
+        sendJson(res, 200, await listAuditLogs());
         return;
       }
       if (url.pathname === "/api/export/youths" && req.method === "GET") {
+        requirePermission(user, "reports:read");
         const xml = await exportYouthsExcelXml(user);
         sendText(res, 200, xml, {
           "Content-Type": "application/vnd.ms-excel; charset=utf-8",
@@ -266,10 +362,12 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (url.pathname === "/api/import/youths" && req.method === "POST") {
+        requirePermission(user, "youths:write");
         sendJson(res, 201, await importYouthsFromCsv(user, await getRequestBody(req)));
         return;
       }
       if (url.pathname === "/api/import/members" && req.method === "POST") {
+        requirePermission(user, "youths:write");
         sendJson(
           res,
           201,

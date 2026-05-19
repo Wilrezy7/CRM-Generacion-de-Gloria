@@ -4,18 +4,19 @@ import htm from "https://esm.sh/htm@3";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const html = htm.bind(React.createElement);
-const apiBase = "/api";
+const apiBase = window.GDG_API_BASE || "/api";
 
 const tabs = [
-  { key: "dashboard", label: "Dashboard", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "youths", label: "Miembros", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "attendance", label: "Asistencia", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "ASISTENTE"] },
-  { key: "alerts", label: "Alertas", roles: ["ADMIN", "ASISTENTE"] },
+  { key: "dashboard", label: "Dashboard", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER", "MENTOR"] },
+  { key: "youths", label: "Miembros", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER", "MENTOR"] },
+  { key: "attendance", label: "Asistencia", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER"] },
+  { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "PASTOR", "LIDER", "MENTOR"] },
+  { key: "alerts", label: "Alertas", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER", "MENTOR"] },
   { key: "users", label: "Usuarios", roles: ["ADMIN"] }
 ];
 
 const tokenKey = "gdg_crm_token";
+const refreshTokenKey = "gdg_crm_refresh";
 const themeKey = "gdg_crm_theme";
 
 const classNames = (...values) => values.filter(Boolean).join(" ");
@@ -205,7 +206,10 @@ const badgeClasses = {
   pendiente: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   atendida: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   ADMIN: "bg-brand-500/15 text-brand-800 dark:text-brand-300",
-  ASISTENTE: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  PASTOR: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
+  SECRETARIA: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  LIDER: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
+  MENTOR: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
   Miembro: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
   Lider: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   Mentor: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
@@ -400,6 +404,7 @@ const App = () => {
       setError("");
     } catch (err) {
       localStorage.removeItem(tokenKey);
+      localStorage.removeItem(refreshTokenKey);
       setToken("");
       setUser(null);
       setError(err.message);
@@ -449,10 +454,14 @@ const App = () => {
           password: form.get("password")
         }
       });
-      localStorage.setItem(tokenKey, data.token);
-      setToken(data.token);
+      const accessToken = data.accessToken || data.token;
+      localStorage.setItem(tokenKey, accessToken);
+      if (data.refreshToken) {
+        localStorage.setItem(refreshTokenKey, data.refreshToken);
+      }
+      setToken(accessToken);
       setUser(data.user);
-      await bootstrap(data.token);
+      await bootstrap(accessToken);
       showMessage("Sesion iniciada correctamente.");
     } catch (err) {
       setError(err.message);
@@ -487,8 +496,19 @@ const App = () => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const refreshToken = localStorage.getItem(refreshTokenKey) || "";
+    try {
+      if (token) {
+        await request("/auth/logout", {
+          method: "POST",
+          token,
+          body: { refreshToken }
+        });
+      }
+    } catch {}
     localStorage.removeItem(tokenKey);
+    localStorage.removeItem(refreshTokenKey);
     setToken("");
     setUser(null);
     setDashboard(null);
@@ -1206,7 +1226,7 @@ const App = () => {
             <${Select} label="Asignar a" name="assignedUserId" defaultValue=${editingYouth?.assignedUserId || ""}>
               <option value="">Sin asignar</option>
               ${users
-                .filter((item) => item.role === "ASISTENTE")
+                .filter((item) => ["SECRETARIA", "LIDER", "MENTOR"].includes(item.role))
                 .map((item) => html`<option value=${item.id}>${item.fullName}</option>`)}
             </${Select}>
           `}
@@ -1280,9 +1300,12 @@ const App = () => {
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitUser}>
           <${Input} label="Nombre completo" name="fullName" defaultValue=${editingUser?.fullName || ""} required />
           <${Input} label="Correo" name="email" type="email" defaultValue=${editingUser?.email || ""} required />
-          <${Select} label="Rol" name="role" defaultValue=${editingUser?.role || "ASISTENTE"}>
-            <option value="ASISTENTE">Asistente</option>
+          <${Select} label="Rol" name="role" defaultValue=${editingUser?.role || "MENTOR"}>
             <option value="ADMIN">Admin</option>
+            <option value="PASTOR">Pastor</option>
+            <option value="SECRETARIA">Secretaria</option>
+            <option value="LIDER">Lider</option>
+            <option value="MENTOR">Mentor</option>
           </${Select}>
           <${Input} label="Contrasena" name="password" type="password" defaultValue=${editingUser ? "" : "Cambio123*"} placeholder=${editingUser ? "Dejar vacia para conservar" : ""} />
           <label className="md:col-span-2 flex items-center gap-3 rounded-2xl bg-slate-100/90 px-4 py-4 dark:bg-slate-900">

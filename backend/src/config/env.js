@@ -44,6 +44,13 @@ const allowInsecurePublishableWrite = toBool(
 const supabaseEnforceRemote = toBool(
   process.env.SUPABASE_ENFORCE_REMOTE || (supabaseUrl ? "true" : "false")
 );
+const isProduction = process.env.NODE_ENV === "production";
+const jwtSecret = process.env.JWT_SECRET || "generacion-de-gloria-secret";
+const parseList = (value) =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 const storageDriver =
   supabaseUrl && (supabaseSecretKey || (allowInsecurePublishableWrite && supabasePublishableKey))
@@ -52,7 +59,18 @@ const storageDriver =
 
 export const env = {
   port: Number(process.env.PORT || 4000),
-  jwtSecret: process.env.JWT_SECRET || "generacion-de-gloria-secret",
+  isProduction,
+  jwtSecret,
+  jwtAccessMinutes: Number(process.env.JWT_ACCESS_MINUTES || 60),
+  refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS || 30),
+  passwordResetMinutes: Number(process.env.PASSWORD_RESET_MINUTES || 30),
+  emailVerificationMinutes: Number(process.env.EMAIL_VERIFICATION_MINUTES || 120),
+  appBaseUrl: normalizeUrl(process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 4000}`),
+  corsOrigins: parseList(process.env.CORS_ORIGIN),
+  emailDeliveryMode: process.env.EMAIL_DELIVERY_MODE || "log",
+  emailWebhookUrl: process.env.EMAIL_WEBHOOK_URL || "",
+  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 40),
   dataFile: path.resolve(__dirname, "../data/database.json"),
   frontendRoot: path.resolve(__dirname, "../../../frontend"),
   supabaseUrl,
@@ -64,3 +82,22 @@ export const env = {
   supabaseEnforceRemote,
   storageDriver
 };
+
+if (isProduction) {
+  const errors = [];
+  if (!jwtSecret || jwtSecret === "generacion-de-gloria-secret" || jwtSecret.length < 32) {
+    errors.push("JWT_SECRET debe ser largo, aleatorio y no usar el valor demo.");
+  }
+  if (!supabaseUrl || !supabaseSecretKey) {
+    errors.push("SUPABASE_URL y SUPABASE_SECRET_KEY son obligatorios en produccion.");
+  }
+  if (!supabaseEnforceRemote) {
+    errors.push("SUPABASE_ENFORCE_REMOTE=true es obligatorio en produccion.");
+  }
+  if (allowInsecurePublishableWrite) {
+    errors.push("SUPABASE_ALLOW_INSECURE_PUBLISHABLE_WRITE=false es obligatorio en produccion.");
+  }
+  if (errors.length) {
+    throw new Error(`Configuracion insegura de produccion: ${errors.join(" ")}`);
+  }
+}

@@ -46,6 +46,11 @@
       };
     </script>
     <link rel="stylesheet" href="/styles.css" />
+    <script>
+      window.GDG_API_BASE = window.location.hostname.endsWith("vercel.app")
+        ? "https://crm-generacion-de-gloria.up.railway.app/api"
+        : "/api";
+    </script>
   </head>
   <body class="bg-sand text-slate-800 dark:bg-night dark:text-slate-100">
     <div id="root"></div>

@@ -7,6 +7,11 @@ export const seedData = {
     updatedAt: now
   },
   users: [],
+  userSessions: [],
+  passwordResets: [],
+  emailVerifications: [],
+  accessRequests: [],
+  auditLogs: [],
   youths: [],
   attendanceSessions: [],
   interactions: [],

@@ -29,6 +29,24 @@ export const signToken = (payload, secret, expiresInHours = 10) => {
   return `${unsigned}.${signature}`;
 };
 
+export const signTokenMinutes = (payload, secret, expiresInMinutes = 60) => {
+  const header = { alg: "HS256", typ: "JWT" };
+  const exp = Math.floor(Date.now() / 1000) + expiresInMinutes * 60;
+  const iat = Math.floor(Date.now() / 1000);
+  const fullPayload = { ...payload, iat, exp };
+  const unsigned = `${b64url(JSON.stringify(header))}.${b64url(
+    JSON.stringify(fullPayload)
+  )}`;
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(unsigned)
+    .digest("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  return `${unsigned}.${signature}`;
+};
+
 export const verifyToken = (token, secret) => {
   const [header, payload, signature] = token.split(".");
   if (!header || !payload || !signature) {

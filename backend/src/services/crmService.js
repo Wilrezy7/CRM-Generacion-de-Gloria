@@ -8,9 +8,11 @@ import {
   sortByDateDesc
 } from "../utils/helpers.js";
 import { comparePassword, hashPassword } from "../utils/security.js";
+import { getPermissions, normalizeRole, requirePermission } from "./rbac.js";
 
 const youthVisibilityFilter = (user) => (youth) =>
-  user.role === "ADMIN" || youth.assignedUserId === user.id;
+  ["ADMIN", "PASTOR", "SECRETARIA"].includes(normalizeRole(user.role)) ||
+  youth.assignedUserId === user.id;
 
 const ensureYouthAccess = (user, youth) => {
   if (!youth) {
@@ -18,7 +20,7 @@ const ensureYouthAccess = (user, youth) => {
     error.status = 404;
     throw error;
   }
-  if (user.role === "ADMIN" || youth.assignedUserId === user.id) {
+  if (["ADMIN", "PASTOR", "SECRETARIA"].includes(normalizeRole(user.role)) || youth.assignedUserId === user.id) {
     return youth;
   }
   const error = new Error("No tienes acceso a este joven.");
@@ -90,7 +92,11 @@ const validateYouthPayload = (payload) => {
     "co_lider": "Lider",
     colider: "Lider",
     mentor: "Mentor",
-    diacono: "Diacono"
+    diacono: "Diacono",
+    pastor: "Pastor",
+    secretaria: "Secretaria",
+    admin: "Admin",
+    administrador: "Admin"
   };
   const normalizedRoleKey = memberRole
     .toLowerCase()
@@ -140,7 +146,8 @@ const validateUserPayload = (payload) => {
   const fullName = normalizeText(payload.fullName);
   const email = normalizeText(payload.email).toLowerCase();
   const role = normalizeText(payload.role).toUpperCase();
-  if (!fullName || !email || !["ADMIN", "ASISTENTE"].includes(role)) {
+  const normalizedRole = normalizeRole(role);
+  if (!fullName || !email) {
     const error = new Error("Datos de usuario invalidos.");
     error.status = 400;
     throw error;
@@ -148,8 +155,10 @@ const validateUserPayload = (payload) => {
   return {
     fullName,
     email,
-    role,
+    role: normalizedRole,
     active: payload.active !== false,
+    emailVerified: payload.emailVerified !== false,
+    mustChangePassword: payload.mustChangePassword === true,
     assignedYouthIds: Array.isArray(payload.assignedYouthIds)
       ? payload.assignedYouthIds
       : []
@@ -207,7 +216,12 @@ const recalculateAlerts = (data) => {
 
 export const sanitizeUser = (user) => {
   const { passwordHash, ...safeUser } = user;
-  return safeUser;
+  const role = normalizeRole(safeUser.role);
+  return {
+    ...safeUser,
+    role,
+    permissions: getPermissions(role)
+  };
 };
 
 export const getSetupStatus = async () => {
@@ -247,6 +261,8 @@ export const bootstrapSystem = async (payload) => {
     role: "ADMIN",
     assignedYouthIds: [],
     active: true,
+    emailVerified: true,
+    mustChangePassword: false,
     createdAt: nowIso()
   };
 
@@ -369,7 +385,7 @@ export const createYouth = async (user, payload) => {
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
-  if (user.role === "ASISTENTE") {
+  if (normalizeRole(user.role) === "MENTOR") {
     record.assignedUserId = user.id;
   }
   data.youths.push(record);
@@ -387,7 +403,7 @@ export const updateYouth = async (user, youthId, payload) => {
     ...validateYouthPayload({ ...current, ...payload }),
     updatedAt: nowIso()
   };
-  if (user.role === "ASISTENTE") {
+  if (normalizeRole(user.role) === "MENTOR") {
     next.assignedUserId = user.id;
   }
   data.youths[index] = next;
@@ -397,7 +413,7 @@ export const updateYouth = async (user, youthId, payload) => {
 };
 
 export const deleteYouth = async (user, youthId) => {
-  if (user.role !== "ADMIN") {
+  if (normalizeRole(user.role) !== "ADMIN") {
     const error = new Error("Solo el administrador puede eliminar jovenes.");
     error.status = 403;
     throw error;
@@ -580,7 +596,7 @@ export const attendAlert = async (user, alertId) => {
 };
 
 export const listUsers = async (user) => {
-  if (user.role !== "ADMIN") {
+  if (normalizeRole(user.role) !== "ADMIN") {
     const error = new Error("Solo el administrador puede ver usuarios.");
     error.status = 403;
     throw error;
@@ -591,7 +607,7 @@ export const listUsers = async (user) => {
 };
 
 export const createUser = async (user, payload) => {
-  if (user.role !== "ADMIN") {
+  if (normalizeRole(user.role) !== "ADMIN") {
     const error = new Error("Solo el administrador puede crear usuarios.");
     error.status = 403;
     throw error;
@@ -607,6 +623,8 @@ export const createUser = async (user, payload) => {
     id: createId("usr"),
     ...sanitized,
     passwordHash: hashPassword(normalizeText(payload.password) || "Cambio123*"),
+    emailVerified: payload.emailVerified !== false,
+    mustChangePassword: true,
     createdAt: nowIso()
   };
   data.users.push(created);
@@ -621,7 +639,7 @@ export const createUser = async (user, payload) => {
 };
 
 export const updateUser = async (user, userId, payload) => {
-  if (user.role !== "ADMIN") {
+  if (normalizeRole(user.role) !== "ADMIN") {
     const error = new Error("Solo el administrador puede editar usuarios.");
     error.status = 403;
     throw error;
@@ -658,7 +676,7 @@ export const updateUser = async (user, userId, payload) => {
 };
 
 export const deleteUser = async (user, userId) => {
-  if (user.role !== "ADMIN") {
+  if (normalizeRole(user.role) !== "ADMIN") {
     const error = new Error("Solo el administrador puede eliminar usuarios.");
     error.status = 403;
     throw error;
@@ -728,7 +746,7 @@ export const exportYouthsExcelXml = async (user) => {
 };
 
 export const importYouthsFromCsv = async (user, payload) => {
-  if (user.role !== "ADMIN") {
+  if (normalizeRole(user.role) !== "ADMIN") {
     const error = new Error("Solo el administrador puede importar base de jovenes.");
     error.status = 403;
     throw error;

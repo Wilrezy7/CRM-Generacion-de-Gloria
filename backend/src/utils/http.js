@@ -1,19 +1,34 @@
 import { parse } from "node:url";
+import { env } from "../config/env.js";
 
-export const sendJson = (res, statusCode, payload) => {
+const corsHeaders = (req) => {
+  const origin = req?.headers?.origin || "";
+  const allowed =
+    env.corsOrigins.length === 0 || env.corsOrigins.includes(origin)
+      ? origin || env.corsOrigins[0] || "*"
+      : env.corsOrigins[0] || "*";
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Vary": "Origin",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin"
+  };
+};
+
+export const sendJson = (res, statusCode, payload, req = null) => {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    ...corsHeaders(req)
   });
   res.end(JSON.stringify(payload));
 };
 
-export const sendText = (res, statusCode, payload, headers = {}) => {
+export const sendText = (res, statusCode, payload, headers = {}, req = null) => {
   res.writeHead(statusCode, {
     "Content-Type": "text/plain; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
+    ...corsHeaders(req),
     ...headers
   });
   res.end(payload);
@@ -38,11 +53,9 @@ export const getRequestBody = async (req) => {
 
 export const getQuery = (req) => parse(req.url, true).query;
 
-export const setNoContent = (res) => {
+export const setNoContent = (res, req = null) => {
   res.writeHead(204, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    ...corsHeaders(req)
   });
   res.end();
 };
