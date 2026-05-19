@@ -12,6 +12,7 @@ const tabs = [
   { key: "attendance", label: "Asistencia", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER"] },
   { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "PASTOR", "LIDER", "MENTOR"] },
   { key: "alerts", label: "Alertas", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER", "MENTOR"] },
+  { key: "reports", label: "Informes", roles: ["ADMIN", "PASTOR", "SECRETARIA"] },
   { key: "users", label: "Usuarios", roles: ["ADMIN"] }
 ];
 
@@ -200,6 +201,26 @@ const useTheme = () => {
 const formatDate = (value) =>
   value ? new Date(`${value}T00:00:00`).toLocaleDateString("es-CO") : "-";
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const toIsoDate = (value) => String(value || "").slice(0, 10);
+
+const inDateRange = (value, from, to) => {
+  const date = toIsoDate(value);
+  if (!date) return true;
+  if (from && date < from) return false;
+  if (to && date > to) return false;
+  return true;
+};
+
+const percent = (value, total) => (total ? Math.round((value / total) * 100) : 0);
+
 const badgeClasses = {
   activo: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   inactivo: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
@@ -340,6 +361,13 @@ const App = () => {
     new URLSearchParams(window.location.search).get("resetToken") ? "reset" : "login"
   );
   const [filters, setFilters] = useState({ search: "", status: "" });
+  const [reportFilters, setReportFilters] = useState({
+    from: "",
+    to: "",
+    status: "",
+    memberRole: "",
+    assignedUserId: ""
+  });
   const [showYouthModal, setShowYouthModal] = useState(false);
   const [editingYouth, setEditingYouth] = useState(null);
   const [showInteractionModal, setShowInteractionModal] = useState(false);
@@ -796,6 +824,179 @@ const App = () => {
       setImportFile(null);
       showMessage(`Se importaron ${members.length} miembros desde Excel.`);
       await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openGeneralReport = async () => {
+    setLoading(true);
+    try {
+      const [allYouths, allAttendance, allInteractions, allAlerts] = await Promise.all([
+        request("/youths?", { token }),
+        request("/attendance", { token }),
+        request("/interactions", { token }),
+        request("/alerts", { token })
+      ]);
+      const filteredYouths = allYouths.filter((item) => {
+        if (reportFilters.status && item.status !== reportFilters.status) return false;
+        if (reportFilters.memberRole && item.memberRole !== reportFilters.memberRole) return false;
+        if (reportFilters.assignedUserId && item.assignedUserId !== reportFilters.assignedUserId) return false;
+        return true;
+      });
+      const visibleIds = new Set(filteredYouths.map((item) => item.id));
+      const filteredAttendance = allAttendance
+        .filter((session) => inDateRange(session.date, reportFilters.from, reportFilters.to))
+        .map((session) => ({
+          ...session,
+          attendance: session.attendance.filter((item) => visibleIds.has(item.youthId))
+        }))
+        .filter((session) => session.attendance.length);
+      const filteredInteractions = allInteractions.filter(
+        (item) =>
+          visibleIds.has(item.youthId) && inDateRange(item.date, reportFilters.from, reportFilters.to)
+      );
+      const filteredAlerts = allAlerts.filter(
+        (item) =>
+          visibleIds.has(item.youthId) &&
+          inDateRange(item.generatedAt || item.date, reportFilters.from, reportFilters.to)
+      );
+      const present = filteredAttendance.reduce(
+        (acc, session) => acc + session.attendance.filter((item) => item.present).length,
+        0
+      );
+      const attendanceTotal = filteredAttendance.reduce(
+        (acc, session) => acc + session.attendance.length,
+        0
+      );
+      const roleCounts = filteredYouths.reduce((acc, item) => {
+        const key = item.memberRole || "Sin rol";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const interactionCounts = filteredInteractions.reduce((acc, item) => {
+        const key = item.type || "otro";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      const reportDate = new Date().toLocaleDateString("es-CO", {
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+      const periodText =
+        reportFilters.from || reportFilters.to
+          ? `${reportFilters.from || "inicio"} a ${reportFilters.to || "actualidad"}`
+          : "Todos los registros visibles";
+      const rows = (items, render) => items.map(render).join("");
+      const reportHtml = `<!doctype html>
+        <html lang="es">
+          <head>
+            <meta charset="utf-8" />
+            <title>Informe general - Generacion de Gloria</title>
+            <style>
+              @page { size: letter; margin: 2.54cm; }
+              body { color: #111827; font-family: "Times New Roman", serif; font-size: 12pt; line-height: 2; margin: 0; }
+              .cover { min-height: 86vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; page-break-after: always; }
+              .cover img { height: 150px; width: 150px; border-radius: 18px; object-fit: cover; margin-bottom: 32px; }
+              h1 { font-size: 18pt; font-weight: 700; margin: 0 0 24px; }
+              h2 { font-size: 14pt; font-weight: 700; margin: 22px 0 8px; }
+              h3 { font-size: 12pt; font-weight: 700; margin: 18px 0 6px; }
+              p { margin: 0 0 12px; text-indent: 1.27cm; }
+              .no-indent { text-indent: 0; }
+              .meta { text-indent: 0; margin: 6px 0; }
+              .running-head { font-size: 10pt; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #d1d5db; margin-bottom: 24px; padding-bottom: 6px; }
+              table { border-collapse: collapse; margin: 12px 0 20px; width: 100%; line-height: 1.5; }
+              caption { caption-side: top; text-align: left; font-style: italic; margin-bottom: 4px; }
+              th, td { border-top: 1px solid #111827; padding: 7px 8px; text-align: left; vertical-align: top; }
+              tbody tr:last-child td { border-bottom: 1px solid #111827; }
+              th { font-weight: 700; }
+              .note { font-size: 10.5pt; line-height: 1.5; margin-top: -12px; text-indent: 0; }
+              .controls { position: sticky; top: 0; background: #111827; color: white; display: flex; justify-content: flex-end; gap: 10px; padding: 12px; font-family: Arial, sans-serif; line-height: 1.2; }
+              .controls button { border: 0; border-radius: 8px; cursor: pointer; font-weight: 700; padding: 10px 14px; }
+              .primary { background: #f59e0b; color: #111827; }
+              .secondary { background: white; color: #111827; }
+              @media print { .controls { display: none; } body { print-color-adjust: exact; } }
+            </style>
+          </head>
+          <body>
+            <div class="controls">
+              <button class="secondary" onclick="window.close()">Cerrar</button>
+              <button class="primary" onclick="window.print()">Generar PDF</button>
+            </div>
+            <section class="cover">
+              <img src="${window.location.origin}/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" />
+              <h1>Informe general del CRM Generacion de Gloria</h1>
+              <p class="meta">Ministerio juvenil Generacion de Gloria</p>
+              <p class="meta">Preparado por: ${escapeHtml(user.fullName)} (${escapeHtml(user.role)})</p>
+              <p class="meta">Fecha: ${escapeHtml(reportDate)}</p>
+              <p class="meta">Periodo analizado: ${escapeHtml(periodText)}</p>
+            </section>
+            <main>
+              <div class="running-head">Informe general - Generacion de Gloria</div>
+              <h2>Resumen ejecutivo</h2>
+              <p>Este informe presenta una lectura general de la gestion ministerial registrada en el CRM, considerando miembros visibles para el rol del usuario, asistencia, seguimientos pastorales y alertas operativas. El documento se estructura con criterios de presentacion inspirados en APA septima edicion: jerarquia clara de titulos, tablas numeradas, notas explicativas y referencias institucionales.</p>
+              <h2>Metodo</h2>
+              <p>Los datos fueron extraidos del CRM Generacion de Gloria al momento de generar el informe. Se aplicaron los filtros definidos por el usuario y las restricciones de acceso por rol. Las estadisticas descriptivas se calcularon sobre registros visibles y disponibles en Supabase.</p>
+              <h2>Resultados</h2>
+              <table>
+                <caption>Tabla 1<br />Indicadores generales del periodo</caption>
+                <thead><tr><th>Indicador</th><th>Resultado</th></tr></thead>
+                <tbody>
+                  <tr><td>Miembros visibles incluidos</td><td>${filteredYouths.length}</td></tr>
+                  <tr><td>Miembros activos</td><td>${filteredYouths.filter((item) => item.status === "activo").length}</td></tr>
+                  <tr><td>Miembros inactivos</td><td>${filteredYouths.filter((item) => item.status === "inactivo").length}</td></tr>
+                  <tr><td>Sesiones de asistencia</td><td>${filteredAttendance.length}</td></tr>
+                  <tr><td>Promedio de asistencia</td><td>${percent(present, attendanceTotal)}%</td></tr>
+                  <tr><td>Seguimientos registrados</td><td>${filteredInteractions.length}</td></tr>
+                  <tr><td>Alertas pendientes</td><td>${filteredAlerts.filter((item) => item.status === "pendiente").length}</td></tr>
+                </tbody>
+              </table>
+              <p class="note"><em>Nota.</em> Los indicadores se calculan con base en los filtros seleccionados y permisos del rol autenticado.</p>
+              <table>
+                <caption>Tabla 2<br />Distribucion de miembros por rol ministerial</caption>
+                <thead><tr><th>Rol ministerial</th><th>Cantidad</th><th>Porcentaje</th></tr></thead>
+                <tbody>
+                  ${rows(Object.entries(roleCounts), ([role, count]) => `<tr><td>${escapeHtml(role)}</td><td>${count}</td><td>${percent(count, filteredYouths.length)}%</td></tr>`)}
+                </tbody>
+              </table>
+              <p class="note"><em>Nota.</em> La distribucion ayuda a identificar concentracion de responsabilidades ministeriales.</p>
+              <table>
+                <caption>Tabla 3<br />Asistencia por reunion o servicio</caption>
+                <thead><tr><th>Fecha</th><th>Actividad</th><th>Presentes</th><th>Total</th><th>Asistencia</th></tr></thead>
+                <tbody>
+                  ${rows(filteredAttendance, (session) => {
+                    const sessionPresent = session.attendance.filter((item) => item.present).length;
+                    return `<tr><td>${escapeHtml(formatDate(session.date))}</td><td>${escapeHtml(session.title)}</td><td>${sessionPresent}</td><td>${session.attendance.length}</td><td>${percent(sessionPresent, session.attendance.length)}%</td></tr>`;
+                  }) || `<tr><td colspan="5">No hay sesiones de asistencia en el periodo seleccionado.</td></tr>`}
+                </tbody>
+              </table>
+              <table>
+                <caption>Tabla 4<br />Seguimientos por tipo</caption>
+                <thead><tr><th>Tipo</th><th>Cantidad</th></tr></thead>
+                <tbody>
+                  ${rows(Object.entries(interactionCounts), ([type, count]) => `<tr><td>${escapeHtml(type)}</td><td>${count}</td></tr>`) || `<tr><td colspan="2">No hay seguimientos en el periodo seleccionado.</td></tr>`}
+                </tbody>
+              </table>
+              <h2>Interpretacion pastoral y administrativa</h2>
+              <p>Los indicadores deben interpretarse como insumos para priorizar acompanamiento, fortalecer la asistencia y distribuir responsabilidades de seguimiento. Una asistencia baja o alertas pendientes sugieren la necesidad de contacto pastoral oportuno, visitas, llamadas o reuniones de cuidado segun el rol responsable.</p>
+              <h2>Referencias</h2>
+              <p class="no-indent">American Psychological Association. (2020). <em>Publication manual of the American Psychological Association</em> (7th ed.). American Psychological Association.</p>
+              <p class="no-indent">Generacion de Gloria. (${new Date().getFullYear()}). <em>CRM institucional de seguimiento ministerial</em> [Base de datos interna].</p>
+            </main>
+          </body>
+        </html>`;
+      const reportWindow = window.open("", "_blank");
+      if (!reportWindow) {
+        throw new Error("El navegador bloqueo la ventana del informe. Permite ventanas emergentes para generar PDF.");
+      }
+      reportWindow.document.open();
+      reportWindow.document.write(reportHtml);
+      reportWindow.document.close();
+      reportWindow.focus();
+      showMessage("Informe generado. Usa el boton Generar PDF en la nueva ventana.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1277,6 +1478,86 @@ const App = () => {
                     `
                   )
                 : html`<${EmptyState} title="Sin alertas" detail="El sistema mostrara aqui las ausencias consecutivas detectadas." />`}
+            </section>
+          `}
+
+          ${activeTab === "reports" && html`
+            <section className="space-y-4">
+              <div className="panel rounded-2xl p-5 shadow-soft">
+                <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
+                  <div>
+                    <h2 className="font-heading text-xl font-extrabold">Informe general institucional</h2>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                      Genera un documento profesional con estadisticas, tablas APA y filtros por periodo, estado, rol ministerial y responsable.
+                    </p>
+                  </div>
+                  <button className="rounded-2xl bg-ink px-5 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${openGeneralReport} disabled=${loading}>
+                    ${loading ? "Generando..." : "Generar PDF"}
+                  </button>
+                </div>
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  <${Input}
+                    label="Desde"
+                    type="date"
+                    value=${reportFilters.from}
+                    onChange=${(event) => setReportFilters({ ...reportFilters, from: event.target.value })}
+                  />
+                  <${Input}
+                    label="Hasta"
+                    type="date"
+                    value=${reportFilters.to}
+                    onChange=${(event) => setReportFilters({ ...reportFilters, to: event.target.value })}
+                  />
+                  <${Select}
+                    label="Estado"
+                    value=${reportFilters.status}
+                    onChange=${(event) => setReportFilters({ ...reportFilters, status: event.target.value })}
+                  >
+                    <option value="">Todos</option>
+                    <option value="activo">Activos</option>
+                    <option value="inactivo">Inactivos</option>
+                  </${Select}>
+                  <${Select}
+                    label="Rol ministerial"
+                    value=${reportFilters.memberRole}
+                    onChange=${(event) => setReportFilters({ ...reportFilters, memberRole: event.target.value })}
+                  >
+                    <option value="">Todos</option>
+                    <option value="Miembro">Miembro</option>
+                    <option value="Lider">Lider</option>
+                    <option value="Mentor">Mentor</option>
+                    <option value="Pastor">Pastor</option>
+                    <option value="Secretaria">Secretaria</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Diacono">Diacono</option>
+                  </${Select}>
+                  <${Select}
+                    label="Responsable"
+                    value=${reportFilters.assignedUserId}
+                    onChange=${(event) => setReportFilters({ ...reportFilters, assignedUserId: event.target.value })}
+                  >
+                    <option value="">Todos</option>
+                    ${users.map((item) => html`<option value=${item.id}>${item.fullName}</option>`)}
+                  </${Select}>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="panel rounded-2xl p-5 shadow-soft">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Formato</p>
+                  <p className="mt-2 font-heading text-2xl font-extrabold">APA 7</p>
+                </div>
+                <div className="panel rounded-2xl p-5 shadow-soft">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Salida</p>
+                  <p className="mt-2 font-heading text-2xl font-extrabold">PDF</p>
+                </div>
+                <div className="panel rounded-2xl p-5 shadow-soft">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Fuente</p>
+                  <p className="mt-2 font-heading text-2xl font-extrabold">Supabase</p>
+                </div>
+              </div>
+              <div className="panel rounded-2xl p-5 text-sm text-slate-600 shadow-soft dark:text-slate-300">
+                El informe se abre en una ventana nueva con boton de impresion. En el dialogo del navegador selecciona "Guardar como PDF".
+              </div>
             </section>
           `}
 
