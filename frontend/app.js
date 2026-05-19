@@ -730,7 +730,7 @@ const App = () => {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(132,151,74,0.28),transparent_32%),linear-gradient(135deg,_#101828,_#1e293b)]"></div>
           <div className="relative flex h-full flex-col justify-between p-12 text-white">
             <div className="flex items-center gap-4">
-              <img src="/assets/brand.svg" alt="Generacion de Gloria" className="h-14 w-14 rounded-2xl" />
+              <img src="/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" className="h-24 w-24 rounded-2xl object-cover shadow-soft" />
               <div>
                 <p className="font-heading text-2xl font-extrabold">Generacion de Gloria</p>
                 <p className="text-sm text-slate-300">CRM pastoral del ministerio juvenil</p>
@@ -834,7 +834,7 @@ const App = () => {
       <div className="mx-auto grid max-w-[1600px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="panel rounded-[28px] p-5 shadow-soft">
           <div className="flex items-center gap-4">
-            <img src="/assets/brand.svg" alt="Marca" className="h-14 w-14 rounded-2xl" />
+            <img src="/assets/logo-generacion-gloria.png" alt="Marca Generacion de Gloria" className="h-20 w-20 rounded-2xl object-cover shadow-soft" />
             <div>
               <p className="font-heading text-xl font-extrabold">Generacion de Gloria</p>
               <p className="text-sm text-slate-500 dark:text-slate-400">CRM ministerial</p>
