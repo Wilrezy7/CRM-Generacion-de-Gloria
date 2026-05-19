@@ -221,6 +221,79 @@ const inDateRange = (value, from, to) => {
 
 const percent = (value, total) => (total ? Math.round((value / total) * 100) : 0);
 
+const reportPalette = ["#0f172a", "#2563eb", "#14b8a6", "#f59e0b", "#ef4444", "#7c3aed", "#64748b"];
+
+const buildBarChartSvg = (items, { width = 760, height = 260, title = "" } = {}) => {
+  const data = items.length ? items : [{ label: "Sin datos", value: 0 }];
+  const max = Math.max(...data.map((item) => Number(item.value) || 0), 1);
+  const chartTop = 42;
+  const chartBottom = 52;
+  const chartLeft = 56;
+  const chartRight = 24;
+  const chartHeight = height - chartTop - chartBottom;
+  const barGap = 14;
+  const barWidth = Math.max(24, (width - chartLeft - chartRight - barGap * (data.length - 1)) / data.length);
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+      <rect width="${width}" height="${height}" rx="24" fill="#ffffff"/>
+      <text x="24" y="28" fill="#0f172a" font-size="18" font-weight="800">${escapeHtml(title)}</text>
+      <line x1="${chartLeft}" y1="${chartTop + chartHeight}" x2="${width - chartRight}" y2="${chartTop + chartHeight}" stroke="#cbd5e1" stroke-width="1"/>
+      ${[0.25, 0.5, 0.75, 1].map((tick) => {
+        const y = chartTop + chartHeight - chartHeight * tick;
+        return `<line x1="${chartLeft}" y1="${y}" x2="${width - chartRight}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/><text x="12" y="${y + 4}" fill="#64748b" font-size="11">${Math.round(max * tick)}</text>`;
+      }).join("")}
+      ${data.map((item, index) => {
+        const value = Number(item.value) || 0;
+        const barHeight = value ? Math.max(8, (value / max) * chartHeight) : 4;
+        const x = chartLeft + index * (barWidth + barGap);
+        const y = chartTop + chartHeight - barHeight;
+        const color = reportPalette[(index + 1) % reportPalette.length];
+        const label = String(item.label || "").slice(0, 13);
+        return `
+          <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="10" fill="${color}"/>
+          <text x="${x + barWidth / 2}" y="${Math.max(chartTop + 14, y - 8)}" fill="#0f172a" font-size="12" font-weight="800" text-anchor="middle">${value}</text>
+          <text x="${x + barWidth / 2}" y="${height - 24}" fill="#334155" font-size="11" font-weight="700" text-anchor="middle">${escapeHtml(label)}</text>
+        `;
+      }).join("")}
+    </svg>
+  `;
+};
+
+const buildDonutChartSvg = (items, { size = 280, title = "" } = {}) => {
+  const total = items.reduce((acc, item) => acc + (Number(item.value) || 0), 0);
+  const radius = 78;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const safeItems = items.length ? items : [{ label: "Sin datos", value: 1 }];
+  const segments = safeItems.map((item, index) => {
+    const value = Number(item.value) || 0;
+    const ratio = total ? value / total : 1 / safeItems.length;
+    const dash = ratio * circumference;
+    const segment = `<circle cx="110" cy="126" r="${radius}" fill="none" stroke="${reportPalette[(index + 1) % reportPalette.length]}" stroke-width="26" stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}" stroke-linecap="round" transform="rotate(-90 110 126)"/>`;
+    offset += dash;
+    return segment;
+  }).join("");
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${size + 240} ${size}" role="img" aria-label="${escapeHtml(title)}">
+      <rect width="${size + 240}" height="${size}" rx="24" fill="#ffffff"/>
+      <text x="24" y="32" fill="#0f172a" font-size="18" font-weight="800">${escapeHtml(title)}</text>
+      <circle cx="110" cy="126" r="${radius}" fill="none" stroke="#e2e8f0" stroke-width="26"/>
+      ${segments}
+      <text x="110" y="119" fill="#0f172a" font-size="28" font-weight="900" text-anchor="middle">${total}</text>
+      <text x="110" y="142" fill="#64748b" font-size="12" font-weight="700" text-anchor="middle">registros</text>
+      ${safeItems.map((item, index) => {
+        const y = 72 + index * 34;
+        const value = Number(item.value) || 0;
+        return `
+          <rect x="235" y="${y - 13}" width="14" height="14" rx="4" fill="${reportPalette[(index + 1) % reportPalette.length]}"/>
+          <text x="260" y="${y}" fill="#334155" font-size="13" font-weight="700">${escapeHtml(item.label)}</text>
+          <text x="${size + 210}" y="${y}" fill="#0f172a" font-size="13" font-weight="900" text-anchor="end">${value} (${percent(value, total)}%)</text>
+        `;
+      }).join("")}
+    </svg>
+  `;
+};
+
 const badgeClasses = {
   activo: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   inactivo: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
@@ -890,35 +963,314 @@ const App = () => {
         reportFilters.from || reportFilters.to
           ? `${reportFilters.from || "inicio"} a ${reportFilters.to || "actualidad"}`
           : "Todos los registros visibles";
+      const activeCount = filteredYouths.filter((item) => item.status === "activo").length;
+      const inactiveCount = filteredYouths.filter((item) => item.status === "inactivo").length;
+      const pendingAlerts = filteredAlerts.filter((item) => item.status === "pendiente").length;
+      const attendanceRate = percent(present, attendanceTotal);
+      const followedYouthIds = new Set(filteredInteractions.map((item) => item.youthId));
+      const followUpCoverage = percent(followedYouthIds.size, filteredYouths.length);
+      const generatedAt = new Date();
+      const generatedDateTime = generatedAt.toLocaleString("es-CO", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
       const rows = (items, render) => items.map(render).join("");
+      const kpiCards = [
+        { label: "Miembros incluidos", value: filteredYouths.length, detail: `${activeCount} activos`, tone: "blue", icon: "M" },
+        { label: "Asistencia promedio", value: `${attendanceRate}%`, detail: `${present}/${attendanceTotal} registros`, tone: attendanceRate >= 70 ? "green" : "amber", icon: "%" },
+        { label: "Seguimientos", value: filteredInteractions.length, detail: `${followUpCoverage}% cobertura`, tone: "teal", icon: "S" },
+        { label: "Alertas pendientes", value: pendingAlerts, detail: `${filteredAlerts.length} alertas totales`, tone: pendingAlerts ? "red" : "green", icon: "A" }
+      ];
+      const roleChart = buildDonutChartSvg(
+        Object.entries(roleCounts).map(([label, value]) => ({ label, value })),
+        { title: "Distribucion por rol ministerial" }
+      );
+      const attendanceChart = buildBarChartSvg(
+        filteredAttendance.slice(-10).map((session) => {
+          const sessionPresent = session.attendance.filter((item) => item.present).length;
+          return { label: formatDate(session.date), value: percent(sessionPresent, session.attendance.length) };
+        }),
+        { title: "Asistencia por reunion (%)" }
+      );
+      const interactionChart = buildBarChartSvg(
+        Object.entries(interactionCounts).map(([label, value]) => ({ label, value })),
+        { title: "Seguimientos por tipo" }
+      );
+      const alertChart = buildDonutChartSvg(
+        [
+          { label: "Pendientes", value: pendingAlerts },
+          { label: "Atendidas", value: filteredAlerts.filter((item) => item.status === "atendida").length }
+        ],
+        { title: "Estado de alertas" }
+      );
       const reportHtml = `<!doctype html>
         <html lang="es">
           <head>
             <meta charset="utf-8" />
             <title>Informe general - Generacion de Gloria</title>
             <style>
-              @page { size: letter; margin: 2.54cm; }
-              body { color: #111827; font-family: "Times New Roman", serif; font-size: 12pt; line-height: 2; margin: 0; }
-              .cover { min-height: 86vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; page-break-after: always; }
-              .cover img { height: 150px; width: 150px; border-radius: 18px; object-fit: cover; margin-bottom: 32px; }
-              h1 { font-size: 18pt; font-weight: 700; margin: 0 0 24px; }
-              h2 { font-size: 14pt; font-weight: 700; margin: 22px 0 8px; }
-              h3 { font-size: 12pt; font-weight: 700; margin: 18px 0 6px; }
-              p { margin: 0 0 12px; text-indent: 1.27cm; }
-              .no-indent { text-indent: 0; }
-              .meta { text-indent: 0; margin: 6px 0; }
-              .running-head { font-size: 10pt; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #d1d5db; margin-bottom: 24px; padding-bottom: 6px; }
-              table { border-collapse: collapse; margin: 12px 0 20px; width: 100%; line-height: 1.5; }
-              caption { caption-side: top; text-align: left; font-style: italic; margin-bottom: 4px; }
-              th, td { border-top: 1px solid #111827; padding: 7px 8px; text-align: left; vertical-align: top; }
-              tbody tr:last-child td { border-bottom: 1px solid #111827; }
-              th { font-weight: 700; }
-              .note { font-size: 10.5pt; line-height: 1.5; margin-top: -12px; text-indent: 0; }
-              .controls { position: sticky; top: 0; background: #111827; color: white; display: flex; justify-content: flex-end; gap: 10px; padding: 12px; font-family: Arial, sans-serif; line-height: 1.2; }
-              .controls button { border: 0; border-radius: 8px; cursor: pointer; font-weight: 700; padding: 10px 14px; }
+              @page {
+                size: letter;
+                margin: 1.45cm;
+                @bottom-center {
+                  content: "Generacion de Gloria CRM - Pagina " counter(page) " de " counter(pages);
+                  color: #64748b;
+                  font-family: Inter, Arial, sans-serif;
+                  font-size: 8.5pt;
+                }
+              }
+              * { box-sizing: border-box; }
+              body {
+                background: #eef2f7;
+                color: #0f172a;
+                font-family: Inter, Roboto, "Open Sans", Arial, sans-serif;
+                font-size: 10.5pt;
+                line-height: 1.55;
+                margin: 0;
+              }
+              .controls {
+                align-items: center;
+                background: #0f172a;
+                color: white;
+                display: flex;
+                gap: 10px;
+                justify-content: flex-end;
+                padding: 12px 18px;
+                position: sticky;
+                top: 0;
+                z-index: 20;
+              }
+              .controls button {
+                border: 0;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 800;
+                padding: 10px 16px;
+              }
               .primary { background: #f59e0b; color: #111827; }
-              .secondary { background: white; color: #111827; }
-              @media print { .controls { display: none; } body { print-color-adjust: exact; } }
+              .secondary { background: #ffffff; color: #111827; }
+              .page {
+                background: #ffffff;
+                border-radius: 8px;
+                box-shadow: 0 16px 46px rgba(15, 23, 42, .12);
+                margin: 24px auto;
+                max-width: 980px;
+                overflow: hidden;
+              }
+              .cover {
+                background:
+                  linear-gradient(135deg, rgba(15, 23, 42, .94), rgba(30, 41, 59, .88)),
+                  radial-gradient(circle at 18% 10%, rgba(245, 158, 11, .35), transparent 32%);
+                color: white;
+                min-height: 720px;
+                padding: 54px;
+                position: relative;
+              }
+              .cover::after {
+                background: #f59e0b;
+                bottom: 0;
+                content: "";
+                height: 10px;
+                left: 0;
+                position: absolute;
+                right: 0;
+              }
+              .cover-header, .report-header {
+                align-items: center;
+                display: flex;
+                gap: 18px;
+                justify-content: space-between;
+              }
+              .brand {
+                align-items: center;
+                display: flex;
+                gap: 14px;
+              }
+              .brand img {
+                border-radius: 8px;
+                height: 74px;
+                object-fit: cover;
+                width: 74px;
+              }
+              .brand-name { font-size: 18pt; font-weight: 900; margin: 0; }
+              .brand-subtitle { color: #cbd5e1; font-size: 9.5pt; margin: 2px 0 0; }
+              .cover-title {
+                margin-top: 130px;
+                max-width: 720px;
+              }
+              h1 {
+                font-size: 34pt;
+                line-height: 1.05;
+                margin: 0;
+              }
+              .cover-lead {
+                color: #e2e8f0;
+                font-size: 13pt;
+                margin: 20px 0 0;
+                max-width: 680px;
+              }
+              .cover-meta {
+                background: rgba(255, 255, 255, .1);
+                border: 1px solid rgba(255, 255, 255, .18);
+                border-radius: 8px;
+                display: grid;
+                gap: 10px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                margin-top: 58px;
+                padding: 18px;
+              }
+              .meta-label { color: #cbd5e1; display: block; font-size: 8pt; font-weight: 800; margin-bottom: 2px; text-transform: uppercase; }
+              .meta-value { color: white; font-weight: 800; }
+              .content { padding: 30px 34px 34px; }
+              .report-header {
+                border-bottom: 1px solid #e2e8f0;
+                margin-bottom: 22px;
+                padding-bottom: 16px;
+              }
+              .report-logo { border-radius: 8px; height: 52px; object-fit: cover; width: 52px; }
+              .report-title { font-size: 17pt; font-weight: 900; margin: 0; }
+              .report-caption { color: #64748b; font-size: 9pt; margin: 2px 0 0; }
+              h2 {
+                color: #0f172a;
+                font-size: 16pt;
+                line-height: 1.2;
+                margin: 28px 0 10px;
+              }
+              h3 {
+                color: #0f172a;
+                font-size: 12pt;
+                margin: 18px 0 8px;
+              }
+              p { color: #334155; margin: 0 0 12px; }
+              .kpi-grid {
+                display: grid;
+                gap: 14px;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                margin: 18px 0 22px;
+              }
+              .kpi {
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                box-shadow: 0 10px 28px rgba(15, 23, 42, .08);
+                min-height: 118px;
+                overflow: hidden;
+                padding: 14px;
+                position: relative;
+              }
+              .kpi::before { content: ""; height: 5px; left: 0; position: absolute; right: 0; top: 0; }
+              .kpi.blue::before { background: #2563eb; }
+              .kpi.green::before { background: #22c55e; }
+              .kpi.amber::before { background: #f59e0b; }
+              .kpi.red::before { background: #ef4444; }
+              .kpi.teal::before { background: #14b8a6; }
+              .kpi-top { align-items: center; display: flex; justify-content: space-between; }
+              .kpi-icon {
+                align-items: center;
+                background: #f1f5f9;
+                border-radius: 8px;
+                color: #0f172a;
+                display: flex;
+                font-size: 10pt;
+                font-weight: 900;
+                height: 34px;
+                justify-content: center;
+                width: 34px;
+              }
+              .kpi-label { color: #64748b; font-size: 8.5pt; font-weight: 800; margin: 0; text-transform: uppercase; }
+              .kpi-value { color: #0f172a; font-size: 24pt; font-weight: 900; line-height: 1; margin: 14px 0 6px; }
+              .kpi-detail { color: #64748b; font-size: 9pt; margin: 0; }
+              .chart-grid {
+                display: grid;
+                gap: 16px;
+                grid-template-columns: 1fr 1fr;
+                margin: 18px 0 22px;
+              }
+              .chart-panel {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 10px;
+                page-break-inside: avoid;
+              }
+              .chart-panel.wide { grid-column: 1 / -1; }
+              .chart-svg { display: block; height: auto; width: 100%; }
+              table {
+                border-collapse: separate;
+                border-spacing: 0;
+                font-size: 9.4pt;
+                margin: 12px 0 22px;
+                overflow: hidden;
+                page-break-inside: auto;
+                width: 100%;
+              }
+              caption {
+                caption-side: top;
+                color: #0f172a;
+                font-size: 10pt;
+                font-weight: 900;
+                margin-bottom: 8px;
+                text-align: left;
+              }
+              thead { display: table-header-group; }
+              tr { page-break-inside: avoid; }
+              th {
+                background: #0f172a;
+                color: white;
+                font-size: 8.5pt;
+                padding: 10px;
+                text-align: left;
+              }
+              td {
+                border-bottom: 1px solid #e2e8f0;
+                color: #334155;
+                padding: 9px 10px;
+                vertical-align: top;
+              }
+              tbody tr:nth-child(even) td { background: #f8fafc; }
+              tfoot td {
+                background: #eff6ff;
+                color: #0f172a;
+                font-weight: 900;
+              }
+              .status {
+                border-radius: 999px;
+                display: inline-block;
+                font-size: 8pt;
+                font-weight: 900;
+                padding: 4px 8px;
+              }
+              .status.good { background: #dcfce7; color: #166534; }
+              .status.warn { background: #fef3c7; color: #92400e; }
+              .status.bad { background: #fee2e2; color: #991b1b; }
+              .executive-box {
+                background: linear-gradient(135deg, #eff6ff, #f8fafc);
+                border: 1px solid #bfdbfe;
+                border-radius: 8px;
+                margin: 14px 0 20px;
+                padding: 16px;
+              }
+              .note { color: #64748b; font-size: 8.8pt; margin-top: -12px; }
+              .references p { padding-left: 22px; text-indent: -22px; }
+              .footer {
+                border-top: 1px solid #e2e8f0;
+                color: #64748b;
+                display: flex;
+                font-size: 8.5pt;
+                justify-content: space-between;
+                margin-top: 28px;
+                padding-top: 12px;
+              }
+              .page-break { page-break-before: always; }
+              @media print {
+                body { background: white; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+                .controls { display: none; }
+                .page { box-shadow: none; margin: 0; max-width: none; overflow: visible; }
+                .cover { border-radius: 0; min-height: 91vh; }
+                .chart-panel, .kpi, table { page-break-inside: avoid; }
+              }
             </style>
           </head>
           <body>
@@ -926,32 +1278,77 @@ const App = () => {
               <button class="secondary" onclick="window.close()">Cerrar</button>
               <button class="primary" onclick="window.print()">Generar PDF</button>
             </div>
-            <section class="cover">
-              <img src="${window.location.origin}/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" />
-              <h1>Informe general del CRM Generacion de Gloria</h1>
-              <p class="meta">Ministerio juvenil Generacion de Gloria</p>
-              <p class="meta">Preparado por: ${escapeHtml(user.fullName)} (${escapeHtml(user.role)})</p>
-              <p class="meta">Fecha: ${escapeHtml(reportDate)}</p>
-              <p class="meta">Periodo analizado: ${escapeHtml(periodText)}</p>
+            <section class="page cover">
+              <div class="cover-header">
+                <div class="brand">
+                  <img src="${window.location.origin}/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" />
+                  <div>
+                    <p class="brand-name">Generacion de Gloria CRM</p>
+                    <p class="brand-subtitle">Sistema institucional de seguimiento ministerial</p>
+                  </div>
+                </div>
+                <div>
+                  <span class="status ${pendingAlerts ? "warn" : "good"}">${pendingAlerts ? "Requiere seguimiento" : "Estado estable"}</span>
+                </div>
+              </div>
+              <div class="cover-title">
+                <h1>Informe ejecutivo general</h1>
+                <p class="cover-lead">Analisis operativo de miembros, asistencia, seguimiento pastoral y alertas con filtros institucionales y visualizacion ejecutiva.</p>
+              </div>
+              <div class="cover-meta">
+                <div><span class="meta-label">Generado por</span><span class="meta-value">${escapeHtml(user.fullName)}</span></div>
+                <div><span class="meta-label">Rol</span><span class="meta-value">${escapeHtml(user.role)}</span></div>
+                <div><span class="meta-label">Fecha y hora</span><span class="meta-value">${escapeHtml(generatedDateTime)}</span></div>
+                <div><span class="meta-label">Periodo</span><span class="meta-value">${escapeHtml(periodText)}</span></div>
+              </div>
             </section>
-            <main>
-              <div class="running-head">Informe general - Generacion de Gloria</div>
+            <main class="page content">
+              <header class="report-header">
+                <div class="brand">
+                  <img class="report-logo" src="${window.location.origin}/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" />
+                  <div>
+                    <p class="report-title">Informe general institucional</p>
+                    <p class="report-caption">Generado el ${escapeHtml(generatedDateTime)} por ${escapeHtml(user.fullName)}</p>
+                  </div>
+                </div>
+                <span class="status good">Supabase</span>
+              </header>
               <h2>Resumen ejecutivo</h2>
-              <p>Este informe presenta una lectura general de la gestion ministerial registrada en el CRM, considerando miembros visibles para el rol del usuario, asistencia, seguimientos pastorales y alertas operativas. El documento se estructura con criterios de presentacion inspirados en APA septima edicion: jerarquia clara de titulos, tablas numeradas, notas explicativas y referencias institucionales.</p>
-              <h2>Metodo</h2>
-              <p>Los datos fueron extraidos del CRM Generacion de Gloria al momento de generar el informe. Se aplicaron los filtros definidos por el usuario y las restricciones de acceso por rol. Las estadisticas descriptivas se calcularon sobre registros visibles y disponibles en Supabase.</p>
-              <h2>Resultados</h2>
+              <div class="executive-box">
+                <p>El periodo analizado incluye ${filteredYouths.length} miembros visibles, ${filteredAttendance.length} sesiones de asistencia, ${filteredInteractions.length} seguimientos y ${filteredAlerts.length} alertas. La asistencia promedio se ubica en ${attendanceRate}% y la cobertura de seguimiento en ${followUpCoverage}% de los miembros filtrados.</p>
+              </div>
+              <section class="kpi-grid">
+                ${kpiCards.map((card) => `
+                  <article class="kpi ${card.tone}">
+                    <div class="kpi-top">
+                      <p class="kpi-label">${escapeHtml(card.label)}</p>
+                      <div class="kpi-icon">${escapeHtml(card.icon)}</div>
+                    </div>
+                    <p class="kpi-value">${escapeHtml(card.value)}</p>
+                    <p class="kpi-detail">${escapeHtml(card.detail)}</p>
+                  </article>
+                `).join("")}
+              </section>
+              <h2>Visualizacion estadistica</h2>
+              <section class="chart-grid">
+                <div class="chart-panel">${roleChart}</div>
+                <div class="chart-panel">${alertChart}</div>
+                <div class="chart-panel wide">${attendanceChart}</div>
+                <div class="chart-panel wide">${interactionChart}</div>
+              </section>
+              <h2 class="page-break">Resultados detallados</h2>
               <table>
                 <caption>Tabla 1<br />Indicadores generales del periodo</caption>
                 <thead><tr><th>Indicador</th><th>Resultado</th></tr></thead>
                 <tbody>
                   <tr><td>Miembros visibles incluidos</td><td>${filteredYouths.length}</td></tr>
-                  <tr><td>Miembros activos</td><td>${filteredYouths.filter((item) => item.status === "activo").length}</td></tr>
-                  <tr><td>Miembros inactivos</td><td>${filteredYouths.filter((item) => item.status === "inactivo").length}</td></tr>
+                  <tr><td>Miembros activos</td><td>${activeCount}</td></tr>
+                  <tr><td>Miembros inactivos</td><td>${inactiveCount}</td></tr>
                   <tr><td>Sesiones de asistencia</td><td>${filteredAttendance.length}</td></tr>
-                  <tr><td>Promedio de asistencia</td><td>${percent(present, attendanceTotal)}%</td></tr>
+                  <tr><td>Promedio de asistencia</td><td>${attendanceRate}%</td></tr>
                   <tr><td>Seguimientos registrados</td><td>${filteredInteractions.length}</td></tr>
-                  <tr><td>Alertas pendientes</td><td>${filteredAlerts.filter((item) => item.status === "pendiente").length}</td></tr>
+                  <tr><td>Cobertura de seguimiento</td><td>${followUpCoverage}%</td></tr>
+                  <tr><td>Alertas pendientes</td><td>${pendingAlerts}</td></tr>
                 </tbody>
               </table>
               <p class="note"><em>Nota.</em> Los indicadores se calculan con base en los filtros seleccionados y permisos del rol autenticado.</p>
@@ -959,10 +1356,10 @@ const App = () => {
                 <caption>Tabla 2<br />Distribucion de miembros por rol ministerial</caption>
                 <thead><tr><th>Rol ministerial</th><th>Cantidad</th><th>Porcentaje</th></tr></thead>
                 <tbody>
-                  ${rows(Object.entries(roleCounts), ([role, count]) => `<tr><td>${escapeHtml(role)}</td><td>${count}</td><td>${percent(count, filteredYouths.length)}%</td></tr>`)}
+                  ${rows(Object.entries(roleCounts), ([role, count]) => `<tr><td>${escapeHtml(role)}</td><td>${count}</td><td>${percent(count, filteredYouths.length)}%</td></tr>`) || `<tr><td colspan="3">No hay miembros para los filtros seleccionados.</td></tr>`}
                 </tbody>
+                <tfoot><tr><td>Total</td><td>${filteredYouths.length}</td><td>100%</td></tr></tfoot>
               </table>
-              <p class="note"><em>Nota.</em> La distribucion ayuda a identificar concentracion de responsabilidades ministeriales.</p>
               <table>
                 <caption>Tabla 3<br />Asistencia por reunion o servicio</caption>
                 <thead><tr><th>Fecha</th><th>Actividad</th><th>Presentes</th><th>Total</th><th>Asistencia</th></tr></thead>
@@ -972,6 +1369,7 @@ const App = () => {
                     return `<tr><td>${escapeHtml(formatDate(session.date))}</td><td>${escapeHtml(session.title)}</td><td>${sessionPresent}</td><td>${session.attendance.length}</td><td>${percent(sessionPresent, session.attendance.length)}%</td></tr>`;
                   }) || `<tr><td colspan="5">No hay sesiones de asistencia en el periodo seleccionado.</td></tr>`}
                 </tbody>
+                <tfoot><tr><td colspan="2">Total / promedio</td><td>${present}</td><td>${attendanceTotal}</td><td>${attendanceRate}%</td></tr></tfoot>
               </table>
               <table>
                 <caption>Tabla 4<br />Seguimientos por tipo</caption>
@@ -979,12 +1377,21 @@ const App = () => {
                 <tbody>
                   ${rows(Object.entries(interactionCounts), ([type, count]) => `<tr><td>${escapeHtml(type)}</td><td>${count}</td></tr>`) || `<tr><td colspan="2">No hay seguimientos en el periodo seleccionado.</td></tr>`}
                 </tbody>
+                <tfoot><tr><td>Total</td><td>${filteredInteractions.length}</td></tr></tfoot>
               </table>
-              <h2>Interpretacion pastoral y administrativa</h2>
+              <h2>Metodo e interpretacion</h2>
+              <p>Los datos fueron extraidos del CRM Generacion de Gloria al momento de generar el informe. Se aplicaron los filtros definidos por el usuario y las restricciones de acceso por rol. Las estadisticas descriptivas se calcularon sobre registros visibles y disponibles en Supabase.</p>
               <p>Los indicadores deben interpretarse como insumos para priorizar acompanamiento, fortalecer la asistencia y distribuir responsabilidades de seguimiento. Una asistencia baja o alertas pendientes sugieren la necesidad de contacto pastoral oportuno, visitas, llamadas o reuniones de cuidado segun el rol responsable.</p>
               <h2>Referencias</h2>
-              <p class="no-indent">American Psychological Association. (2020). <em>Publication manual of the American Psychological Association</em> (7th ed.). American Psychological Association.</p>
-              <p class="no-indent">Generacion de Gloria. (${new Date().getFullYear()}). <em>CRM institucional de seguimiento ministerial</em> [Base de datos interna].</p>
+              <div class="references">
+                <p>American Psychological Association. (2020). <em>Publication manual of the American Psychological Association</em> (7th ed.). American Psychological Association.</p>
+                <p>Generacion de Gloria. (${new Date().getFullYear()}). <em>CRM institucional de seguimiento ministerial</em> [Base de datos interna].</p>
+              </div>
+              <footer class="footer">
+                <span>Generacion de Gloria CRM</span>
+                <span>${escapeHtml(generatedDateTime)}</span>
+                <span>Informe institucional</span>
+              </footer>
             </main>
           </body>
         </html>`;
