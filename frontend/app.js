@@ -336,6 +336,9 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [authMode, setAuthMode] = useState(
+    new URLSearchParams(window.location.search).get("resetToken") ? "reset" : "login"
+  );
   const [filters, setFilters] = useState({ search: "", status: "" });
   const [showYouthModal, setShowYouthModal] = useState(false);
   const [editingYouth, setEditingYouth] = useState(null);
@@ -489,6 +492,83 @@ const App = () => {
       setSetupInfo(refreshed.setup || null);
       setError("");
       showMessage("Administrador inicial creado. Ya puedes iniciar sesion.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setLoading(true);
+    try {
+      await request("/auth/forgot-password", {
+        method: "POST",
+        body: { email: form.get("email") }
+      });
+      setError("");
+      showMessage("Si el correo existe, recibira instrucciones para recuperar el acceso.");
+      setAuthMode("login");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
+    if (password !== confirmPassword) {
+      setError("Las contrasenas no coinciden.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await request("/auth/reset-password", {
+        method: "POST",
+        body: {
+          token: new URLSearchParams(window.location.search).get("resetToken"),
+          password
+        }
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setAuthMode("login");
+      setError("");
+      showMessage("Contrasena actualizada. Ya puedes iniciar sesion.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const newPassword = String(form.get("newPassword") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
+    if (newPassword !== confirmPassword) {
+      setError("Las contrasenas no coinciden.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await request("/auth/change-password", {
+        method: "POST",
+        token,
+        body: {
+          currentPassword: form.get("currentPassword"),
+          newPassword
+        }
+      });
+      setUser({ ...user, mustChangePassword: false });
+      setError("");
+      showMessage("Contrasena actualizada correctamente.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -812,14 +892,52 @@ const App = () => {
                     </button>
                   </form>
                 `
+              : authMode === "forgot"
+              ? html`
+                  <form className="space-y-4" onSubmit=${handleForgotPassword}>
+                    <${Input} label="Correo registrado" name="email" type="email" required />
+                    ${error &&
+                    html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    ${notice &&
+                    html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
+                    <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
+                      ${loading ? "Enviando..." : "Enviar recuperacion"}
+                    </button>
+                    <button type="button" className="w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
+                      Volver al inicio de sesion
+                    </button>
+                  </form>
+                `
+              : authMode === "reset"
+              ? html`
+                  <form className="space-y-4" onSubmit=${handleResetPassword}>
+                    <${Input} label="Nueva contrasena" name="password" type="password" minLength="8" required />
+                    <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" minLength="8" required />
+                    ${error &&
+                    html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    ${notice &&
+                    html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
+                    <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
+                      ${loading ? "Actualizando..." : "Cambiar contrasena"}
+                    </button>
+                    <button type="button" className="w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
+                      Volver al inicio de sesion
+                    </button>
+                  </form>
+                `
               : html`
                   <form className="space-y-4" onSubmit=${handleLogin}>
                     <${Input} label="Correo" name="email" type="email" required />
                     <${Input} label="Contrasena" name="password" type="password" required />
                     ${error &&
                     html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    ${notice &&
+                    html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
                     <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
                       ${loading ? "Ingresando..." : "Entrar al CRM"}
+                    </button>
+                    <button type="button" className="w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("forgot"); }}>
+                      Olvide mi contrasena
                     </button>
                   </form>
                 `}
@@ -1198,6 +1316,31 @@ const App = () => {
           `}
         </main>
       </div>
+
+      ${user.mustChangePassword &&
+      html`
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="panel w-full max-w-md rounded-[28px] p-8 shadow-soft">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
+              Seguridad de cuenta
+            </p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold">Cambia tu contrasena</h2>
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              El administrador asigno una contrasena temporal. Define una nueva para continuar.
+            </p>
+            <form className="mt-6 space-y-4" onSubmit=${handleChangePassword}>
+              <${Input} label="Contrasena temporal" name="currentPassword" type="password" required />
+              <${Input} label="Nueva contrasena" name="newPassword" type="password" minLength="8" required />
+              <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" minLength="8" required />
+              ${error &&
+              html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+              <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white dark:bg-white dark:text-ink" disabled=${loading}>
+                ${loading ? "Actualizando..." : "Guardar contrasena"}
+              </button>
+            </form>
+          </div>
+        </div>
+      `}
 
       <${Modal} open=${showYouthModal} title=${editingYouth ? "Editar joven" : "Nuevo joven"} onClose=${() => { setShowYouthModal(false); setEditingYouth(null); }}>
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitYouth}>
