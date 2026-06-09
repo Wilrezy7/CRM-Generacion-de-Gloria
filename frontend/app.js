@@ -12,6 +12,7 @@ const tabs = [
   { key: "attendance", label: "Asistencia", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER"] },
   { key: "interactions", label: "Seguimiento", roles: ["ADMIN", "PASTOR", "LIDER", "MENTOR"] },
   { key: "alerts", label: "Alertas", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER", "MENTOR"] },
+  { key: "consolidation", label: "Consolidacion", roles: ["ADMIN", "PASTOR", "SECRETARIA", "LIDER"] },
   { key: "reports", label: "Informes", roles: ["ADMIN", "PASTOR", "SECRETARIA"] },
   { key: "users", label: "Usuarios", roles: ["ADMIN"] }
 ];
@@ -297,6 +298,9 @@ const buildDonutChartSvg = (items, { size = 280, title = "" } = {}) => {
 const badgeClasses = {
   activo: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   inactivo: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+  nuevo: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  en_seguimiento: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  convertido: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   pendiente: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   atendida: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   ADMIN: "bg-brand-500/15 text-brand-800 dark:text-brand-300",
@@ -422,6 +426,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [dashboard, setDashboard] = useState(null);
   const [youths, setYouths] = useState([]);
+  const [visitors, setVisitors] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -443,6 +448,8 @@ const App = () => {
   });
   const [showYouthModal, setShowYouthModal] = useState(false);
   const [editingYouth, setEditingYouth] = useState(null);
+  const [showVisitorModal, setShowVisitorModal] = useState(false);
+  const [editingVisitor, setEditingVisitor] = useState(null);
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -454,6 +461,8 @@ const App = () => {
     () => tabs.filter((tab) => user && tab.roles.includes(user.role)),
     [user]
   );
+  const can = (permission) =>
+    user?.permissions?.includes("*") || user?.permissions?.includes(permission);
 
   const showMessage = (message) => {
     setNotice(message);
@@ -468,6 +477,11 @@ const App = () => {
   const loadYouths = async (authToken = token, params = filters) => {
     const query = new URLSearchParams(params).toString();
     setYouths(await request(`/youths?${query}`, { token: authToken }));
+  };
+
+  const loadVisitors = async (authToken = token) => {
+    if (user?.role === "MENTOR") return;
+    setVisitors(await request("/visitors", { token: authToken }));
   };
 
   const loadAttendance = async (authToken = token) => {
@@ -498,6 +512,9 @@ const App = () => {
       await Promise.all([
         loadDashboard(authToken),
         loadYouths(authToken, filters),
+        me.user.role !== "MENTOR"
+          ? request("/visitors", { token: authToken }).then(setVisitors)
+          : Promise.resolve(),
         loadAttendance(authToken),
         loadInteractions(authToken),
         loadAlerts(authToken)
@@ -539,6 +556,7 @@ const App = () => {
     await Promise.all([
       loadDashboard(),
       loadYouths(),
+      user?.role !== "MENTOR" ? loadVisitors() : Promise.resolve(),
       loadAttendance(),
       loadInteractions(),
       loadAlerts(),
@@ -693,7 +711,9 @@ const App = () => {
     setToken("");
     setUser(null);
     setDashboard(null);
+    setVisitors([]);
     setEditingUser(null);
+    setEditingVisitor(null);
     setActiveTab("dashboard");
   };
 
@@ -716,6 +736,52 @@ const App = () => {
       }
       setShowYouthModal(false);
       setEditingYouth(null);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const submitVisitor = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      if (editingVisitor) {
+        await request(`/visitors/${editingVisitor.id}`, {
+          method: "PUT",
+          token,
+          body: payload
+        });
+        showMessage("Visitante actualizado.");
+      } else {
+        await request("/visitors", { method: "POST", token, body: payload });
+        showMessage("Visitante registrado en consolidacion.");
+      }
+      setShowVisitorModal(false);
+      setEditingVisitor(null);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const removeVisitor = async (id) => {
+    if (!window.confirm("Se eliminara el visitante seleccionado.")) return;
+    try {
+      await request(`/visitors/${id}`, { method: "DELETE", token });
+      showMessage("Visitante eliminado.");
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const convertVisitor = async (visitor) => {
+    if (!window.confirm(`${visitor.fullName} pasara al modulo Miembros.`)) return;
+    try {
+      await request(`/visitors/${visitor.id}/convert`, { method: "POST", token });
+      showMessage("Visitante convertido en miembro.");
       await refreshAll();
     } catch (err) {
       setError(err.message);
@@ -1558,7 +1624,7 @@ const App = () => {
   return html`
     <div className="min-h-screen p-4 lg:p-6">
       <div className="mx-auto grid max-w-[1600px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="panel rounded-[28px] p-5 shadow-soft">
+        <aside className="panel sticky top-4 max-h-[calc(100vh-2rem)] overflow-auto rounded-[28px] p-5 shadow-soft">
           <div className="flex items-center gap-4">
             <img src="/assets/logo-generacion-gloria.png" alt="Marca Generacion de Gloria" className="h-20 w-20 rounded-2xl object-cover shadow-soft" />
             <div>
@@ -1888,6 +1954,105 @@ const App = () => {
             </section>
           `}
 
+          ${activeTab === "consolidation" && html`
+            <section className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <${StatCard}
+                  label="Visitantes registrados"
+                  value=${visitors.length}
+                  accent="bg-sky-500/20"
+                  detail="Personas en proceso de consolidacion"
+                />
+                <${StatCard}
+                  label="En seguimiento"
+                  value=${visitors.filter((item) => item.status === "en_seguimiento").length}
+                  accent="bg-amber-500/20"
+                  detail="Requieren acompanamiento"
+                />
+                <${StatCard}
+                  label="Convertidos"
+                  value=${visitors.filter((item) => item.status === "convertido").length}
+                  accent="bg-emerald-500/20"
+                  detail="Ya pasaron a miembros"
+                />
+              </div>
+              <div className="panel rounded-2xl p-5 shadow-soft">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="font-heading text-xl font-extrabold">Visitantes</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      Gestiona personas nuevas antes de integrarlas formalmente al modulo Miembros.
+                    </p>
+                  </div>
+                  ${can("consolidation:write") &&
+                  html`
+                    <button
+                      className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink"
+                      onClick=${() => { setEditingVisitor(null); setShowVisitorModal(true); }}
+                    >
+                      Nuevo visitante
+                    </button>
+                  `}
+                </div>
+              </div>
+              ${visitors.length
+                ? html`
+                    <div className="panel scroll-thin overflow-auto rounded-2xl shadow-soft">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-100/90 text-left dark:bg-slate-900">
+                          <tr>
+                            ${["Nombre y apellido", "Direccion", "Telefono", "Estado", "Registro", "Acciones"].map(
+                              (head) => html`<th className="px-4 py-4 font-semibold">${head}</th>`
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${visitors.map(
+                            (visitor) => html`
+                              <tr className="border-t border-slate-200/70 dark:border-slate-800">
+                                <td className="px-4 py-4">
+                                  <div className="font-semibold">${visitor.fullName}</div>
+                                  ${visitor.convertedYouthId &&
+                                  html`<div className="mt-1 text-xs text-emerald-600 dark:text-emerald-300">Convertido a miembro</div>`}
+                                </td>
+                                <td className="px-4 py-4">${visitor.address}</td>
+                                <td className="px-4 py-4">${visitor.phone}</td>
+                                <td className="px-4 py-4">
+                                  <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[visitor.status])}>
+                                    ${visitor.status === "en_seguimiento" ? "en seguimiento" : visitor.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4">${visitor.createdAt ? new Date(visitor.createdAt).toLocaleDateString("es-CO") : "-"}</td>
+                                <td className="px-4 py-4">
+                                  <div className="flex flex-wrap gap-2">
+                                    ${can("consolidation:write") &&
+                                    html`
+                                      <button className="rounded-xl bg-brand-500 px-3 py-2 font-semibold text-white" onClick=${() => { setEditingVisitor(visitor); setShowVisitorModal(true); }}>
+                                        Editar
+                                      </button>
+                                      ${visitor.status !== "convertido" &&
+                                      html`
+                                        <button className="rounded-xl bg-emerald-500 px-3 py-2 font-semibold text-white" onClick=${() => convertVisitor(visitor)}>
+                                          Convertir
+                                        </button>
+                                      `}
+                                      <button className="rounded-xl bg-rose-500 px-3 py-2 font-semibold text-white" onClick=${() => removeVisitor(visitor.id)}>
+                                        Eliminar
+                                      </button>
+                                    `}
+                                  </div>
+                                </td>
+                              </tr>
+                            `
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  `
+                : html`<${EmptyState} title="Sin visitantes registrados" detail="Cuando llegue una persona nueva, registrala aqui para iniciar el proceso de consolidacion." />`}
+            </section>
+          `}
+
           ${activeTab === "reports" && html`
             <section className="space-y-4">
               <div className="panel rounded-2xl p-5 shadow-soft">
@@ -2029,6 +2194,31 @@ const App = () => {
           </div>
         </div>
       `}
+
+      <${Modal} open=${showVisitorModal} title=${editingVisitor ? "Editar visitante" : "Nuevo visitante"} onClose=${() => { setShowVisitorModal(false); setEditingVisitor(null); }}>
+        <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitVisitor}>
+          <${Input} label="Nombre y apellido" name="fullName" defaultValue=${editingVisitor?.fullName || ""} required />
+          <${Input} label="Telefono" name="phone" defaultValue=${editingVisitor?.phone || ""} required />
+          <div className="md:col-span-2">
+            <${Input} label="Direccion" name="address" defaultValue=${editingVisitor?.address || ""} required />
+          </div>
+          <${Select} label="Estado" name="status" defaultValue=${editingVisitor?.status || "nuevo"}>
+            <option value="nuevo">Nuevo</option>
+            <option value="en_seguimiento">En seguimiento</option>
+            ${editingVisitor?.status === "convertido" &&
+            html`<option value="convertido">Convertido</option>`}
+          </${Select}>
+          <div></div>
+          <div className="md:col-span-2">
+            <${Textarea} label="Notas de consolidacion" name="notes" defaultValue=${editingVisitor?.notes || ""} />
+          </div>
+          <div className="md:col-span-2 flex justify-end">
+            <button className="rounded-2xl bg-brand-600 px-5 py-3 font-semibold text-white">
+              ${editingVisitor ? "Guardar visitante" : "Registrar visitante"}
+            </button>
+          </div>
+        </form>
+      </${Modal}>
 
       <${Modal} open=${showYouthModal} title=${editingYouth ? "Editar joven" : "Nuevo joven"} onClose=${() => { setShowYouthModal(false); setEditingYouth(null); }}>
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitYouth}>

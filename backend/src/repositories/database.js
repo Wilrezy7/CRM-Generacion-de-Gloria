@@ -75,6 +75,16 @@ const normalizeData = (data) => ({
         };
       })
     : [],
+  visitors: Array.isArray(data.visitors)
+    ? data.visitors.map((visitor) => ({
+        status: "nuevo",
+        address: "",
+        phone: "",
+        notes: "",
+        ...visitor,
+        updatedAt: visitor.updatedAt || visitor.createdAt || new Date().toISOString()
+      }))
+    : [],
   attendanceSessions: Array.isArray(data.attendanceSessions)
     ? data.attendanceSessions
     : [],

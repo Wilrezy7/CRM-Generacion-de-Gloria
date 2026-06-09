@@ -9,6 +9,7 @@ export const PERMISSIONS = {
     "interactions:read",
     "interactions:write",
     "alerts:read",
+    "consolidation:read",
     "reports:read"
   ],
   SECRETARIA: [
@@ -19,6 +20,8 @@ export const PERMISSIONS = {
     "attendance:write",
     "interactions:read",
     "alerts:read",
+    "consolidation:read",
+    "consolidation:write",
     "reports:read"
   ],
   LIDER: [
@@ -28,7 +31,9 @@ export const PERMISSIONS = {
     "attendance:write",
     "interactions:read",
     "interactions:write",
-    "alerts:read"
+    "alerts:read",
+    "consolidation:read",
+    "consolidation:write"
   ],
   MENTOR: [
     "dashboard:read",
@@ -67,4 +72,3 @@ export const requirePermission = (user, permission) => {
   error.status = 403;
   throw error;
 };
-

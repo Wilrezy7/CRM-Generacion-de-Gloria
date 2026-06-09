@@ -142,6 +142,30 @@ const validateYouthPayload = (payload) => {
   };
 };
 
+const validateVisitorPayload = (payload) => {
+  const fullName = normalizeText(payload.fullName || payload.name);
+  const address = normalizeText(payload.address);
+  const phone = normalizeText(payload.phone);
+  const status = normalizeText(payload.status || "nuevo").toLowerCase();
+  if (!fullName || !address || !phone) {
+    const error = new Error("Nombre y apellido, direccion y telefono son obligatorios.");
+    error.status = 400;
+    throw error;
+  }
+  if (!["nuevo", "en_seguimiento", "convertido"].includes(status)) {
+    const error = new Error("Estado de visitante no valido.");
+    error.status = 400;
+    throw error;
+  }
+  return {
+    fullName,
+    address,
+    phone,
+    status,
+    notes: normalizeText(payload.notes)
+  };
+};
+
 const validateUserPayload = (payload) => {
   const fullName = normalizeText(payload.fullName);
   const email = normalizeText(payload.email).toLowerCase();
@@ -431,6 +455,134 @@ export const deleteYouth = async (user, youthId) => {
   syncUserAssignments(data);
   await writeDb(data);
   return true;
+};
+
+export const listVisitors = async (user, query = {}) => {
+  const data = await readDb();
+  const search = normalizeText(query.search).toLowerCase();
+  const status = normalizeText(query.status).toLowerCase();
+  return (data.visitors || [])
+    .filter((item) => !status || item.status === status)
+    .filter((item) => {
+      if (!search) return true;
+      return [item.fullName, item.address, item.phone]
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    })
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+};
+
+export const createVisitor = async (user, payload) => {
+  const data = await readDb();
+  const sanitized = validateVisitorPayload(payload);
+  if (sanitized.status === "convertido") {
+    const error = new Error("Para convertir un visitante usa la accion Convertir a miembro.");
+    error.status = 400;
+    throw error;
+  }
+  const visitor = {
+    id: createId("vis"),
+    ...sanitized,
+    createdBy: user.id,
+    convertedYouthId: null,
+    convertedAt: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  data.visitors = Array.isArray(data.visitors) ? data.visitors : [];
+  data.visitors.push(visitor);
+  await writeDb(data);
+  return visitor;
+};
+
+export const updateVisitor = async (user, visitorId, payload) => {
+  const data = await readDb();
+  const visitors = Array.isArray(data.visitors) ? data.visitors : [];
+  const index = visitors.findIndex((item) => item.id === visitorId);
+  if (index === -1) {
+    const error = new Error("Visitante no encontrado.");
+    error.status = 404;
+    throw error;
+  }
+  const current = visitors[index];
+  const sanitized = validateVisitorPayload({ ...current, ...payload });
+  if (current.status !== "convertido" && sanitized.status === "convertido") {
+    const error = new Error("Para convertir un visitante usa la accion Convertir a miembro.");
+    error.status = 400;
+    throw error;
+  }
+  const updated = {
+    ...current,
+    ...sanitized,
+    updatedAt: nowIso()
+  };
+  visitors[index] = updated;
+  data.visitors = visitors;
+  await writeDb(data);
+  return updated;
+};
+
+export const deleteVisitor = async (user, visitorId) => {
+  const data = await readDb();
+  const visitors = Array.isArray(data.visitors) ? data.visitors : [];
+  const visitor = visitors.find((item) => item.id === visitorId);
+  if (!visitor) {
+    const error = new Error("Visitante no encontrado.");
+    error.status = 404;
+    throw error;
+  }
+  data.visitors = visitors.filter((item) => item.id !== visitorId);
+  await writeDb(data);
+  return true;
+};
+
+export const convertVisitorToYouth = async (user, visitorId) => {
+  const data = await readDb();
+  const visitors = Array.isArray(data.visitors) ? data.visitors : [];
+  const index = visitors.findIndex((item) => item.id === visitorId);
+  if (index === -1) {
+    const error = new Error("Visitante no encontrado.");
+    error.status = 404;
+    throw error;
+  }
+  const visitor = visitors[index];
+  if (visitor.status === "convertido" && visitor.convertedYouthId) {
+    const error = new Error("Este visitante ya fue convertido en miembro.");
+    error.status = 400;
+    throw error;
+  }
+  const youth = {
+    id: createId("yth"),
+    fullName: visitor.fullName,
+    documentId: `VIS-${visitor.id}`,
+    age: 0,
+    phone: visitor.phone,
+    email: "",
+    birthDate: "2000-01-01",
+    baptized: "NO",
+    memberRole: "Miembro",
+    address: visitor.address,
+    joinDate: new Date().toISOString().slice(0, 10),
+    status: "activo",
+    assignedUserId: null,
+    notes: normalizeText(visitor.notes || "Convertido desde Consolidacion."),
+    sourceVisitorId: visitor.id,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  data.youths.push(youth);
+  visitors[index] = {
+    ...visitor,
+    status: "convertido",
+    convertedYouthId: youth.id,
+    convertedAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  data.visitors = visitors;
+  syncUserAssignments(data);
+  await writeDb(data);
+  return { visitor: visitors[index], youth };
 };
 
 export const listAttendance = async (user) => {

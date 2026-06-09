@@ -13,6 +13,7 @@ export const seedData = {
   accessRequests: [],
   auditLogs: [],
   youths: [],
+  visitors: [],
   attendanceSessions: [],
   interactions: [],
   alerts: []

@@ -9,8 +9,10 @@ import {
   createAttendanceSession,
   createInteraction,
   createUser,
+  createVisitor,
   createYouth,
   deleteUser,
+  deleteVisitor,
   deleteYouth,
   exportYouthsExcelXml,
   getDashboard,
@@ -22,8 +24,11 @@ import {
   listAttendance,
   listInteractions,
   listUsers,
+  listVisitors,
   listYouths,
+  convertVisitorToYouth,
   updateUser,
+  updateVisitor,
   updateYouth
 } from "./services/crmService.js";
 import { getStorageInfo, probeStorage } from "./repositories/database.js";
@@ -322,6 +327,35 @@ const server = http.createServer(async (req, res) => {
         requirePermission(user, "alerts:read");
         const alertId = url.pathname.split("/")[3];
         sendJson(res, 200, await attendAlert(user, alertId));
+        return;
+      }
+      if (url.pathname === "/api/visitors" && req.method === "GET") {
+        requirePermission(user, "consolidation:read");
+        sendJson(res, 200, await listVisitors(user, getQuery(req)));
+        return;
+      }
+      if (url.pathname === "/api/visitors" && req.method === "POST") {
+        requirePermission(user, "consolidation:write");
+        sendJson(res, 201, await createVisitor(user, await getRequestBody(req)));
+        return;
+      }
+      if (url.pathname.match(/^\/api\/visitors\/[^/]+$/) && req.method === "PUT") {
+        requirePermission(user, "consolidation:write");
+        const visitorId = url.pathname.split("/").pop();
+        sendJson(res, 200, await updateVisitor(user, visitorId, await getRequestBody(req)));
+        return;
+      }
+      if (url.pathname.match(/^\/api\/visitors\/[^/]+$/) && req.method === "DELETE") {
+        requirePermission(user, "consolidation:write");
+        const visitorId = url.pathname.split("/").pop();
+        await deleteVisitor(user, visitorId);
+        setNoContent(res, req);
+        return;
+      }
+      if (url.pathname.match(/^\/api\/visitors\/[^/]+\/convert$/) && req.method === "POST") {
+        requirePermission(user, "consolidation:write");
+        const visitorId = url.pathname.split("/")[3];
+        sendJson(res, 201, await convertVisitorToYouth(user, visitorId));
         return;
       }
       if (url.pathname === "/api/users" && req.method === "GET") {
