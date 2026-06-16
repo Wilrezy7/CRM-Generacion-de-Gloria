@@ -3,8 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101828" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="GDG CRM" />
     <title>Generacion de Gloria CRM</title>
     <link rel="icon" type="image/png" href="/assets/logo-generacion-gloria.png" />
+    <link rel="apple-touch-icon" href="/assets/logo-generacion-gloria.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -55,5 +60,12 @@
   <body class="bg-sand text-slate-800 dark:bg-night dark:text-slate-100">
     <div id="root"></div>
     <script type="module" src="/app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

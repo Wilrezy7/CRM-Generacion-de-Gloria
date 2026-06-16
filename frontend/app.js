@@ -365,13 +365,20 @@ const MiniBarChart = ({ items }) => {
 const Modal = ({ open, title, onClose, children, wide = false }) => {
   if (!open) return null;
   return html`
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
-      <div className=${classNames("panel fade-in max-h-[90vh] overflow-auto rounded-3xl shadow-soft", wide ? "w-full max-w-5xl" : "w-full max-w-2xl")}>
-        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200/70 bg-white/80 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-night/80">
-          <h3 className="font-heading text-xl font-bold">${title}</h3>
-          <button className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900" onClick=${onClose}>Cerrar</button>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className=${classNames(
+          "modal-panel panel fade-in max-h-[92dvh] w-full overflow-auto rounded-t-[28px] shadow-soft sm:max-h-[90vh] sm:rounded-3xl",
+          wide ? "sm:max-w-5xl" : "sm:max-w-2xl"
+        )}
+      >
+        <div className="sticky top-0 flex items-center justify-between gap-4 border-b border-slate-200/70 bg-white/90 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-night/90 sm:px-6">
+          <h3 className="font-heading text-lg font-bold sm:text-xl">${title}</h3>
+          <button className="touch-target rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900" onClick=${onClose}>Cerrar</button>
         </div>
-        <div className="p-6">${children}</div>
+        <div className="p-4 sm:p-6">${children}</div>
       </div>
     </div>
   `;
@@ -381,7 +388,7 @@ const Input = ({ label, ...props }) => html`
   <label className="flex flex-col gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
     <span>${label}</span>
     <input
-      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-brand-500 dark:border-slate-700 dark:bg-slate-950"
+      className="min-h-[48px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/40 md:text-sm dark:border-slate-700 dark:bg-slate-950"
       ...${props}
     />
   </label>
@@ -391,7 +398,7 @@ const Select = ({ label, children, ...props }) => html`
   <label className="flex flex-col gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
     <span>${label}</span>
     <select
-      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-brand-500 dark:border-slate-700 dark:bg-slate-950"
+      className="min-h-[48px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/40 md:text-sm dark:border-slate-700 dark:bg-slate-950"
       ...${props}
     >
       ${children}
@@ -403,7 +410,7 @@ const Textarea = ({ label, ...props }) => html`
   <label className="flex flex-col gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
     <span>${label}</span>
     <textarea
-      className="min-h-[120px] rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-brand-500 dark:border-slate-700 dark:bg-slate-950"
+      className="min-h-[128px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/40 md:text-sm dark:border-slate-700 dark:bg-slate-950"
       ...${props}
     ></textarea>
   </label>
@@ -415,6 +422,142 @@ const EmptyState = ({ title, detail }) => html`
     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">${detail}</p>
   </div>
 `;
+
+const tabInitials = {
+  dashboard: "D",
+  youths: "M",
+  attendance: "A",
+  interactions: "S",
+  alerts: "!",
+  consolidation: "C",
+  reports: "I",
+  users: "U"
+};
+
+const SidebarContent = ({
+  activeTab,
+  availableTabs,
+  close,
+  logout,
+  setActiveTab,
+  setTheme,
+  systemInfo,
+  theme,
+  user
+}) => {
+  const selectTab = (key) => {
+    setActiveTab(key);
+    close?.();
+  };
+
+  return html`
+    <div className="flex min-h-full flex-col">
+      <div className="flex items-center gap-4">
+        <img
+          src="/assets/logo-generacion-gloria.png"
+          alt="Marca Generacion de Gloria"
+          className="h-16 w-16 rounded-2xl object-cover shadow-soft sm:h-20 sm:w-20"
+          loading="lazy"
+        />
+        <div className="min-w-0">
+          <p className="font-heading text-lg font-extrabold sm:text-xl">Generacion de Gloria</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">CRM ministerial</p>
+        </div>
+      </div>
+      <div className="mt-6 rounded-3xl bg-ink px-4 py-5 text-white dark:bg-white dark:text-ink">
+        <p className="text-sm text-slate-300 dark:text-slate-600">Sesion activa</p>
+        <p className="mt-2 break-words font-heading text-lg font-extrabold sm:text-xl">${user.fullName}</p>
+        <span className=${classNames("mt-3 inline-flex rounded-full px-3 py-1 text-xs font-bold", badgeClasses[user.role])}>${user.role}</span>
+        ${systemInfo?.storage &&
+        html`
+          <div className="mt-4 rounded-2xl bg-white/10 px-3 py-3 text-xs text-slate-200 dark:bg-slate-900 dark:text-slate-300">
+            <div className="font-semibold uppercase tracking-[0.18em]">
+              Datos ${systemInfo.storage.driver === "supabase" ? "en Supabase" : "en archivo local"}
+            </div>
+            ${systemInfo.storage.intendedDriver === "supabase" &&
+            systemInfo.storage.driver !== "supabase" &&
+            html`<div className="mt-2 text-[11px] text-amber-200 dark:text-amber-300">Supabase esta configurado, pero el sistema esta usando fallback local.</div>`}
+            ${systemInfo.storage.pendingSupabaseConfig &&
+            html`<div className="mt-2 text-[11px] text-amber-200 dark:text-amber-300">Falta completar URL o clave segura de Supabase.</div>`}
+            ${systemInfo.storage.lastError &&
+            html`<div className="mt-2 break-all text-[11px] text-rose-200 dark:text-rose-300">${systemInfo.storage.lastError}</div>`}
+          </div>
+        `}
+      </div>
+      <nav className="mt-6 space-y-2" aria-label="Menu principal">
+        ${availableTabs.map(
+          (tab) => html`
+            <button
+              type="button"
+              aria-current=${activeTab === tab.key ? "page" : undefined}
+              className=${classNames(
+                "touch-target flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition active:scale-[0.99]",
+                activeTab === tab.key
+                  ? "bg-brand-600 text-white shadow-soft"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              )}
+              onClick=${() => selectTab(tab.key)}
+            >
+              <span className=${classNames(
+                "grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs font-extrabold",
+                activeTab === tab.key ? "bg-white/20 text-white" : "bg-white text-brand-700 dark:bg-slate-950 dark:text-brand-300"
+              )}>
+                ${tabInitials[tab.key] || tab.label[0]}
+              </span>
+              <span className="min-w-0 flex-1">${tab.label}</span>
+              ${activeTab === tab.key && html`<span className="h-2 w-2 rounded-full bg-white"></span>`}
+            </button>
+          `
+        )}
+      </nav>
+      <div className="mt-auto flex gap-3 pt-8">
+        <button
+          type="button"
+          className="touch-target flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold dark:bg-slate-900"
+          onClick=${() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          ${theme === "dark" ? "Modo claro" : "Modo oscuro"}
+        </button>
+        <button type="button" className="touch-target rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white" onClick=${logout}>
+          Salir
+        </button>
+      </div>
+    </div>
+  `;
+};
+
+const BottomNavigation = ({ activeTab, availableTabs, setActiveTab }) => {
+  const priority = ["dashboard", "youths", "consolidation", "alerts", "reports"];
+  const items = priority
+    .map((key) => availableTabs.find((tab) => tab.key === key))
+    .filter(Boolean)
+    .slice(0, 5);
+
+  return html`
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-12px_30px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden dark:border-slate-800 dark:bg-night/95" aria-label="Navegacion inferior">
+      <div className="mx-auto grid max-w-xl gap-1" style=${{ gridTemplateColumns: `repeat(${items.length || 1}, minmax(0, 1fr))` }}>
+        ${items.map(
+          (tab) => html`
+            <button
+              type="button"
+              aria-current=${activeTab === tab.key ? "page" : undefined}
+              className=${classNames(
+                "touch-target flex min-w-0 flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-bold transition active:scale-[0.98]",
+                activeTab === tab.key
+                  ? "bg-brand-600 text-white"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900"
+              )}
+              onClick=${() => setActiveTab(tab.key)}
+            >
+              <span className="grid h-6 w-6 place-items-center rounded-lg text-xs">${tabInitials[tab.key] || tab.label[0]}</span>
+              <span className="mt-1 max-w-full truncate">${tab.label}</span>
+            </button>
+          `
+        )}
+      </div>
+    </nav>
+  `;
+};
 
 const App = () => {
   const [theme, setTheme] = useTheme();
@@ -456,6 +599,7 @@ const App = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const availableTabs = useMemo(
     () => tabs.filter((tab) => user && tab.roles.includes(user.role)),
@@ -463,6 +607,25 @@ const App = () => {
   );
   const can = (permission) =>
     user?.permissions?.includes("*") || user?.permissions?.includes(permission);
+
+  useEffect(() => {
+    document.body.classList.toggle("mobile-menu-open", mobileMenuOpen);
+    return () => document.body.classList.remove("mobile-menu-open");
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!error) return;
+    window.requestAnimationFrame(() => {
+      document.querySelector(".app-error")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+    });
+  }, [error]);
 
   const showMessage = (message) => {
     setNotice(message);
@@ -1515,13 +1678,20 @@ const App = () => {
             </div>
           </div>
         </section>
-        <section className="flex items-center justify-center px-6 py-12">
-          <div className="w-full max-w-md panel rounded-[28px] p-8 shadow-soft">
+        <section className="flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12">
+          <div className="w-full max-w-md panel rounded-[24px] p-5 shadow-soft sm:rounded-[28px] sm:p-8">
+            <div className="mb-6 flex items-center gap-3 lg:hidden">
+              <img src="/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" className="h-16 w-16 rounded-2xl object-cover shadow-soft" />
+              <div>
+                <p className="font-heading text-lg font-extrabold">Generacion de Gloria</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">CRM ministerial</p>
+              </div>
+            </div>
             <div className="mb-8">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
                 Acceso seguro
               </p>
-              <h1 className="mt-3 font-heading text-4xl font-extrabold tracking-tight">
+              <h1 className="mt-3 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">
                 Iniciar sesion
               </h1>
               <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
@@ -1554,14 +1724,14 @@ const App = () => {
               ? html`
                   <form className="space-y-4" onSubmit=${handleBootstrap}>
                     <${Input} label="Nombre del ministerio" name="churchName" defaultValue="Generacion de Gloria" required />
-                    <${Input} label="Nombre del administrador" name="fullName" required />
-                    <${Input} label="Correo" name="email" type="email" required />
-                    <${Input} label="Contrasena" name="password" type="password" minLength="8" required />
+                    <${Input} label="Nombre del administrador" name="fullName" autoComplete="name" required />
+                    <${Input} label="Correo" name="email" type="email" inputMode="email" autoComplete="email" required />
+                    <${Input} label="Contrasena" name="password" type="password" autoComplete="new-password" minLength="8" required />
                     ${error &&
-                    html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
                     ${notice &&
                     html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
-                    <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
+                    <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
                       ${loading ? "Creando..." : "Crear administrador inicial"}
                     </button>
                   </form>
@@ -1569,15 +1739,15 @@ const App = () => {
               : authMode === "forgot"
               ? html`
                   <form className="space-y-4" onSubmit=${handleForgotPassword}>
-                    <${Input} label="Correo registrado" name="email" type="email" required />
+                    <${Input} label="Correo registrado" name="email" type="email" inputMode="email" autoComplete="email" required />
                     ${error &&
-                    html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
                     ${notice &&
                     html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
-                    <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
+                    <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
                       ${loading ? "Enviando..." : "Enviar recuperacion"}
                     </button>
-                    <button type="button" className="w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
+                    <button type="button" className="touch-target w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
                       Volver al inicio de sesion
                     </button>
                   </form>
@@ -1585,32 +1755,32 @@ const App = () => {
               : authMode === "reset"
               ? html`
                   <form className="space-y-4" onSubmit=${handleResetPassword}>
-                    <${Input} label="Nueva contrasena" name="password" type="password" minLength="8" required />
-                    <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" minLength="8" required />
+                    <${Input} label="Nueva contrasena" name="password" type="password" autoComplete="new-password" minLength="8" required />
+                    <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" autoComplete="new-password" minLength="8" required />
                     ${error &&
-                    html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
                     ${notice &&
                     html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
-                    <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
+                    <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
                       ${loading ? "Actualizando..." : "Cambiar contrasena"}
                     </button>
-                    <button type="button" className="w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
+                    <button type="button" className="touch-target w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
                       Volver al inicio de sesion
                     </button>
                   </form>
                 `
               : html`
                   <form className="space-y-4" onSubmit=${handleLogin}>
-                    <${Input} label="Correo" name="email" type="email" required />
-                    <${Input} label="Contrasena" name="password" type="password" required />
+                    <${Input} label="Correo" name="email" type="email" inputMode="email" autoComplete="email" required />
+                    <${Input} label="Contrasena" name="password" type="password" autoComplete="current-password" required />
                     ${error &&
-                    html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+                    html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
                     ${notice &&
                     html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
-                    <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
+                    <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
                       ${loading ? "Ingresando..." : "Entrar al CRM"}
                     </button>
-                    <button type="button" className="w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("forgot"); }}>
+                    <button type="button" className="touch-target w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("forgot"); }}>
                       Olvide mi contrasena
                     </button>
                   </form>
@@ -1622,74 +1792,84 @@ const App = () => {
   }
 
   return html`
-    <div className="min-h-screen p-4 lg:p-6">
+    <div className="min-h-screen px-3 pb-24 pt-20 sm:px-4 lg:p-6">
+      <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-200 bg-white/95 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden dark:border-slate-800 dark:bg-night/95">
+        <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-4">
+          <button
+            type="button"
+            aria-label=${mobileMenuOpen ? "Cerrar menu principal" : "Abrir menu principal"}
+            aria-expanded=${mobileMenuOpen}
+            className="touch-target grid place-items-center rounded-2xl bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            onClick=${() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <span className="relative block h-5 w-6">
+              <span className=${classNames("absolute left-0 top-0 h-0.5 w-6 rounded-full bg-current transition", mobileMenuOpen && "translate-y-[9px] rotate-45")}></span>
+              <span className=${classNames("absolute left-0 top-[9px] h-0.5 w-6 rounded-full bg-current transition", mobileMenuOpen && "opacity-0")}></span>
+              <span className=${classNames("absolute left-0 top-[18px] h-0.5 w-6 rounded-full bg-current transition", mobileMenuOpen && "-translate-y-[9px] -rotate-45")}></span>
+            </span>
+          </button>
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
+            <img src="/assets/logo-generacion-gloria.png" alt="Generacion de Gloria" className="h-10 w-10 rounded-xl object-cover shadow-soft" />
+            <div className="min-w-0">
+              <p className="truncate font-heading text-sm font-extrabold">Generacion de Gloria</p>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">${tabs.find((tab) => tab.key === activeTab)?.label}</p>
+            </div>
+          </div>
+          <span className=${classNames("grid h-10 min-w-[2.5rem] place-items-center rounded-2xl px-2 text-[11px] font-extrabold", badgeClasses[user.role])}>
+            ${user.role}
+          </span>
+        </div>
+      </header>
+
+      ${mobileMenuOpen &&
+      html`
+        <button
+          type="button"
+          aria-label="Cerrar menu"
+          className="fixed inset-0 z-40 bg-slate-950/45 lg:hidden"
+          onClick=${() => setMobileMenuOpen(false)}
+        ></button>
+      `}
+
+      <aside className=${classNames(
+        "panel fixed inset-y-0 left-0 z-50 h-[100dvh] w-[min(88vw,340px)] overflow-auto rounded-r-[28px] p-5 shadow-soft transition-transform duration-300 lg:hidden",
+        mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <${SidebarContent}
+          activeTab=${activeTab}
+          availableTabs=${availableTabs}
+          close=${() => setMobileMenuOpen(false)}
+          logout=${logout}
+          setActiveTab=${setActiveTab}
+          setTheme=${setTheme}
+          systemInfo=${systemInfo}
+          theme=${theme}
+          user=${user}
+        />
+      </aside>
+
       <div className="mx-auto grid max-w-[1600px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="panel sticky top-4 max-h-[calc(100vh-2rem)] overflow-auto rounded-[28px] p-5 shadow-soft">
-          <div className="flex items-center gap-4">
-            <img src="/assets/logo-generacion-gloria.png" alt="Marca Generacion de Gloria" className="h-20 w-20 rounded-2xl object-cover shadow-soft" />
-            <div>
-              <p className="font-heading text-xl font-extrabold">Generacion de Gloria</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">CRM ministerial</p>
-            </div>
-          </div>
-            <div className="mt-8 rounded-3xl bg-ink px-4 py-5 text-white dark:bg-white dark:text-ink">
-              <p className="text-sm text-slate-300 dark:text-slate-600">Sesion activa</p>
-              <p className="mt-2 font-heading text-xl font-extrabold">${user.fullName}</p>
-              <span className=${classNames("mt-3 inline-flex rounded-full px-3 py-1 text-xs font-bold", badgeClasses[user.role])}>${user.role}</span>
-              ${systemInfo?.storage &&
-              html`
-                <div className="mt-4 rounded-2xl bg-white/10 px-3 py-3 text-xs text-slate-200 dark:bg-slate-900 dark:text-slate-300">
-                  <div className="font-semibold uppercase tracking-[0.18em]">
-                    Datos ${systemInfo.storage.driver === "supabase" ? "en Supabase" : "en archivo local"}
-                  </div>
-                  ${systemInfo.storage.intendedDriver === "supabase" &&
-                  systemInfo.storage.driver !== "supabase" &&
-                  html`<div className="mt-2 text-[11px] text-amber-200 dark:text-amber-300">Supabase esta configurado, pero el sistema esta usando fallback local.</div>`}
-                  ${systemInfo.storage.pendingSupabaseConfig &&
-                  html`<div className="mt-2 text-[11px] text-amber-200 dark:text-amber-300">Falta completar URL o clave segura de Supabase.</div>`}
-                  ${systemInfo.storage.lastError &&
-                  html`<div className="mt-2 break-all text-[11px] text-rose-200 dark:text-rose-300">${systemInfo.storage.lastError}</div>`}
-                </div>
-              `}
-            </div>
-          <nav className="mt-6 space-y-2">
-            ${availableTabs.map(
-              (tab) => html`
-                <button
-                  className=${classNames(
-                    "flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold transition",
-                    activeTab === tab.key
-                      ? "bg-brand-600 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  )}
-                  onClick=${() => setActiveTab(tab.key)}
-                >
-                  <span>${tab.label}</span>
-                </button>
-              `
-            )}
-          </nav>
-          <div className="mt-8 flex gap-3">
-            <button
-              className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold dark:bg-slate-900"
-              onClick=${() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              ${theme === "dark" ? "Modo claro" : "Modo oscuro"}
-            </button>
-            <button className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white" onClick=${logout}>
-              Salir
-            </button>
-          </div>
+        <aside className="panel sticky top-4 hidden max-h-[calc(100vh-2rem)] overflow-auto rounded-[28px] p-5 shadow-soft lg:block">
+          <${SidebarContent}
+            activeTab=${activeTab}
+            availableTabs=${availableTabs}
+            logout=${logout}
+            setActiveTab=${setActiveTab}
+            setTheme=${setTheme}
+            systemInfo=${systemInfo}
+            theme=${theme}
+            user=${user}
+          />
         </aside>
 
-        <main className="space-y-4">
-          <header className="panel rounded-[28px] px-5 py-4 shadow-soft">
+        <main className="min-w-0 space-y-4">
+          <header className="panel rounded-[24px] px-4 py-4 shadow-soft sm:rounded-[28px] sm:px-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.18em] text-brand-700 dark:text-brand-300">
                   Ministerio juvenil
                 </p>
-                <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-tight">
+                <h1 className="mt-2 font-heading text-2xl font-extrabold tracking-tight sm:text-3xl">
                   ${activeTab === "dashboard" ? "Panel principal" : tabs.find((tab) => tab.key === activeTab)?.label}
                 </h1>
               </div>
@@ -1697,7 +1877,7 @@ const App = () => {
               html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">${notice}</div>`}
             </div>
             ${error &&
-            html`<div className="mt-4 rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+            html`<div className="app-error mt-4 rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
           </header>
 
           ${loading &&
@@ -1803,7 +1983,7 @@ const App = () => {
               ${youths.length
                 ? html`
                     <div className="panel scroll-thin overflow-auto rounded-2xl shadow-soft">
-                      <table className="min-w-full text-sm">
+                      <table className="responsive-table min-w-full text-sm">
                         <thead className="bg-slate-100/90 text-left dark:bg-slate-900">
                           <tr>
                             ${["Nombre", "Cedula", "Celular", "Nacimiento", "Bautizado", "Rol", "Estado", "Acciones"].map(
@@ -1815,21 +1995,21 @@ const App = () => {
                           ${youths.map(
                             (youth) => html`
                               <tr className="border-t border-slate-200/70 dark:border-slate-800">
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Nombre">
                                   <div className="font-semibold">${youth.fullName}</div>
                                   <div className="text-xs text-slate-500">${youth.email || "Sin correo"}</div>
                                 </td>
-                                <td className="px-4 py-4">${youth.documentId || "-"}</td>
-                                <td className="px-4 py-4">${youth.phone}</td>
-                                <td className="px-4 py-4">${formatDate(youth.birthDate)}</td>
-                                <td className="px-4 py-4">${youth.baptized || "-"}</td>
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Cedula">${youth.documentId || "-"}</td>
+                                <td className="px-4 py-4" data-label="Celular">${youth.phone}</td>
+                                <td className="px-4 py-4" data-label="Nacimiento">${formatDate(youth.birthDate)}</td>
+                                <td className="px-4 py-4" data-label="Bautizado">${youth.baptized || "-"}</td>
+                                <td className="px-4 py-4" data-label="Rol">
                                   <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[youth.memberRole])}>${youth.memberRole || "Miembro"}</span>
                                 </td>
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Estado">
                                   <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[youth.status])}>${youth.status}</span>
                                 </td>
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Acciones">
                                   <div className="flex flex-wrap gap-2">
                                     <button className="rounded-xl bg-slate-200 px-3 py-2 font-semibold dark:bg-slate-800" onClick=${() => openTimeline(youth.id)}>Historial</button>
                                     <button className="rounded-xl bg-brand-500 px-3 py-2 font-semibold text-white" onClick=${() => { setEditingYouth(youth); setShowYouthModal(true); }}>Editar</button>
@@ -1998,7 +2178,7 @@ const App = () => {
               ${visitors.length
                 ? html`
                     <div className="panel scroll-thin overflow-auto rounded-2xl shadow-soft">
-                      <table className="min-w-full text-sm">
+                      <table className="responsive-table min-w-full text-sm">
                         <thead className="bg-slate-100/90 text-left dark:bg-slate-900">
                           <tr>
                             ${["Nombre y apellido", "Direccion", "Telefono", "Estado", "Registro", "Acciones"].map(
@@ -2010,20 +2190,20 @@ const App = () => {
                           ${visitors.map(
                             (visitor) => html`
                               <tr className="border-t border-slate-200/70 dark:border-slate-800">
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Nombre y apellido">
                                   <div className="font-semibold">${visitor.fullName}</div>
                                   ${visitor.convertedYouthId &&
                                   html`<div className="mt-1 text-xs text-emerald-600 dark:text-emerald-300">Convertido a miembro</div>`}
                                 </td>
-                                <td className="px-4 py-4">${visitor.address}</td>
-                                <td className="px-4 py-4">${visitor.phone}</td>
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Direccion">${visitor.address}</td>
+                                <td className="px-4 py-4" data-label="Telefono">${visitor.phone}</td>
+                                <td className="px-4 py-4" data-label="Estado">
                                   <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[visitor.status])}>
                                     ${visitor.status === "en_seguimiento" ? "en seguimiento" : visitor.status}
                                   </span>
                                 </td>
-                                <td className="px-4 py-4">${visitor.createdAt ? new Date(visitor.createdAt).toLocaleDateString("es-CO") : "-"}</td>
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4" data-label="Registro">${visitor.createdAt ? new Date(visitor.createdAt).toLocaleDateString("es-CO") : "-"}</td>
+                                <td className="px-4 py-4" data-label="Acciones">
                                   <div className="flex flex-wrap gap-2">
                                     ${can("consolidation:write") &&
                                     html`
@@ -2170,10 +2350,16 @@ const App = () => {
         </main>
       </div>
 
+      <${BottomNavigation}
+        activeTab=${activeTab}
+        availableTabs=${availableTabs}
+        setActiveTab=${setActiveTab}
+      />
+
       ${user.mustChangePassword &&
       html`
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="panel w-full max-w-md rounded-[28px] p-8 shadow-soft">
+          <div className="panel w-full max-w-md rounded-[24px] p-5 shadow-soft sm:rounded-[28px] sm:p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
               Seguridad de cuenta
             </p>
@@ -2182,12 +2368,12 @@ const App = () => {
               El administrador asigno una contrasena temporal. Define una nueva para continuar.
             </p>
             <form className="mt-6 space-y-4" onSubmit=${handleChangePassword}>
-              <${Input} label="Contrasena temporal" name="currentPassword" type="password" required />
-              <${Input} label="Nueva contrasena" name="newPassword" type="password" minLength="8" required />
-              <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" minLength="8" required />
+              <${Input} label="Contrasena temporal" name="currentPassword" type="password" autoComplete="current-password" required />
+              <${Input} label="Nueva contrasena" name="newPassword" type="password" autoComplete="new-password" minLength="8" required />
+              <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" autoComplete="new-password" minLength="8" required />
               ${error &&
-              html`<div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
-              <button className="w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white dark:bg-white dark:text-ink" disabled=${loading}>
+              html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
+              <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white dark:bg-white dark:text-ink" disabled=${loading}>
                 ${loading ? "Actualizando..." : "Guardar contrasena"}
               </button>
             </form>
@@ -2198,9 +2384,9 @@ const App = () => {
       <${Modal} open=${showVisitorModal} title=${editingVisitor ? "Editar visitante" : "Nuevo visitante"} onClose=${() => { setShowVisitorModal(false); setEditingVisitor(null); }}>
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitVisitor}>
           <${Input} label="Nombre y apellido" name="fullName" defaultValue=${editingVisitor?.fullName || ""} required />
-          <${Input} label="Telefono" name="phone" defaultValue=${editingVisitor?.phone || ""} required />
+          <${Input} label="Telefono" name="phone" type="tel" inputMode="tel" autoComplete="tel" defaultValue=${editingVisitor?.phone || ""} required />
           <div className="md:col-span-2">
-            <${Input} label="Direccion" name="address" defaultValue=${editingVisitor?.address || ""} required />
+            <${Input} label="Direccion" name="address" autoComplete="street-address" defaultValue=${editingVisitor?.address || ""} required />
           </div>
           <${Select} label="Estado" name="status" defaultValue=${editingVisitor?.status || "nuevo"}>
             <option value="nuevo">Nuevo</option>
@@ -2222,10 +2408,10 @@ const App = () => {
 
       <${Modal} open=${showYouthModal} title=${editingYouth ? "Editar joven" : "Nuevo joven"} onClose=${() => { setShowYouthModal(false); setEditingYouth(null); }}>
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitYouth}>
-          <${Input} label="Nombre completo" name="fullName" defaultValue=${editingYouth?.fullName || ""} required />
-          <${Input} label="Cedula" name="documentId" defaultValue=${editingYouth?.documentId || ""} required />
-          <${Input} label="Telefono" name="phone" defaultValue=${editingYouth?.phone || ""} required />
-          <${Input} label="Correo" name="email" type="email" defaultValue=${editingYouth?.email || ""} />
+          <${Input} label="Nombre completo" name="fullName" autoComplete="name" defaultValue=${editingYouth?.fullName || ""} required />
+          <${Input} label="Cedula" name="documentId" inputMode="numeric" defaultValue=${editingYouth?.documentId || ""} required />
+          <${Input} label="Telefono" name="phone" type="tel" inputMode="tel" autoComplete="tel" defaultValue=${editingYouth?.phone || ""} required />
+          <${Input} label="Correo" name="email" type="email" inputMode="email" autoComplete="email" defaultValue=${editingYouth?.email || ""} />
           <${Input} label="Fecha de nacimiento" name="birthDate" type="date" defaultValue=${editingYouth?.birthDate || ""} required />
           <${Select} label="Bautizado" name="baptized" defaultValue=${editingYouth?.baptized || "NO"}>
             <option value="SI">SI</option>
@@ -2237,7 +2423,7 @@ const App = () => {
             <option value="Mentor">Mentor</option>
             <option value="Diacono">Diacono</option>
           </${Select}>
-          <${Input} label="Direccion" name="address" defaultValue=${editingYouth?.address || ""} />
+          <${Input} label="Direccion" name="address" autoComplete="street-address" defaultValue=${editingYouth?.address || ""} />
           <${Select} label="Estado" name="status" defaultValue=${editingYouth?.status || "activo"}>
             <option value="activo">Activo</option>
             <option value="inactivo">Inactivo</option>
@@ -2319,8 +2505,8 @@ const App = () => {
 
       <${Modal} open=${showUserModal} title=${editingUser ? "Editar usuario" : "Crear usuario"} onClose=${() => { setShowUserModal(false); setEditingUser(null); }}>
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitUser}>
-          <${Input} label="Nombre completo" name="fullName" defaultValue=${editingUser?.fullName || ""} required />
-          <${Input} label="Correo" name="email" type="email" defaultValue=${editingUser?.email || ""} required />
+          <${Input} label="Nombre completo" name="fullName" autoComplete="name" defaultValue=${editingUser?.fullName || ""} required />
+          <${Input} label="Correo" name="email" type="email" inputMode="email" autoComplete="email" defaultValue=${editingUser?.email || ""} required />
           <${Select} label="Rol" name="role" defaultValue=${editingUser?.role || "MENTOR"}>
             <option value="ADMIN">Admin</option>
             <option value="PASTOR">Pastor</option>
@@ -2328,7 +2514,7 @@ const App = () => {
             <option value="LIDER">Lider</option>
             <option value="MENTOR">Mentor</option>
           </${Select}>
-          <${Input} label="Contrasena" name="password" type="password" defaultValue=${editingUser ? "" : "Cambio123*"} placeholder=${editingUser ? "Dejar vacia para conservar" : ""} />
+          <${Input} label="Contrasena" name="password" type="password" autoComplete="new-password" defaultValue=${editingUser ? "" : "Cambio123*"} placeholder=${editingUser ? "Dejar vacia para conservar" : ""} />
           <label className="md:col-span-2 flex items-center gap-3 rounded-2xl bg-slate-100/90 px-4 py-4 dark:bg-slate-900">
             <input type="checkbox" name="active" defaultChecked=${editingUser ? editingUser.active !== false : true} className="h-5 w-5 accent-[#84974a]" />
             <span className="text-sm font-medium">Usuario activo</span>

@@ -1,0 +1,25 @@
+{
+  "name": "Generacion de Gloria CRM",
+  "short_name": "GDG CRM",
+  "description": "CRM ministerial de Generacion de Gloria para miembros, consolidacion, asistencia e informes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f5ef",
+  "theme_color": "#101828",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/logo-generacion-gloria.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/logo-generacion-gloria.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
