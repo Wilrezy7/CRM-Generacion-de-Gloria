@@ -31,20 +31,22 @@ const normalizeData = (data) => ({
     ? data.users.map((user) => ({
         assignedYouthIds: [],
         active: true,
-        emailVerified: true,
-        mustChangePassword: false,
+        accessBlocked: false,
+        failedLoginCount: 0,
+        lockedUntil: null,
         lastLogin: null,
+        linkedYouthId: null,
+        managedFromYouth: false,
+        passwordHash: user.passwordHash || user.password_hash || "",
         ...user,
         email: String(user.email || "").toLowerCase(),
         assignedYouthIds: Array.isArray(user.assignedYouthIds)
           ? user.assignedYouthIds
-          : []
+          : [],
+        updatedAt: user.updatedAt || user.createdAt || new Date().toISOString()
       }))
     : [],
   userSessions: Array.isArray(data.userSessions) ? data.userSessions : [],
-  passwordResets: Array.isArray(data.passwordResets) ? data.passwordResets : [],
-  emailVerifications: Array.isArray(data.emailVerifications) ? data.emailVerifications : [],
-  accessRequests: Array.isArray(data.accessRequests) ? data.accessRequests : [],
   auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
   youths: Array.isArray(data.youths)
     ? data.youths.map((youth) => {

@@ -33,16 +33,11 @@ import {
 } from "./services/crmService.js";
 import { getStorageInfo, probeStorage } from "./repositories/database.js";
 import {
-  changePassword,
-  createAccessRequest,
   listAuditLogs,
   loginUser,
   logoutSession,
   refreshSession,
-  requestPasswordReset,
-  resetPassword,
-  validateAccessToken,
-  verifyAccessRequest
+  validateAccessToken
 } from "./services/authService.js";
 import { requirePermission } from "./services/rbac.js";
 import { checkRateLimit } from "./utils/rateLimit.js";
@@ -215,36 +210,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === "/api/auth/forgot-password" && req.method === "POST") {
-    await withHandler(res, async () => {
-      checkRateLimit(`forgot:${req.socket.remoteAddress}`);
-      sendJson(res, 200, await requestPasswordReset(await getRequestBody(req)));
-    });
-    return;
-  }
-
-  if (url.pathname === "/api/auth/reset-password" && req.method === "POST") {
-    await withHandler(res, async () => {
-      sendJson(res, 200, await resetPassword(await getRequestBody(req)));
-    });
-    return;
-  }
-
-  if (url.pathname === "/api/access-requests" && req.method === "POST") {
-    await withHandler(res, async () => {
-      checkRateLimit(`access-request:${req.socket.remoteAddress}`);
-      sendJson(res, 201, await createAccessRequest(await getRequestBody(req)));
-    });
-    return;
-  }
-
-  if (url.pathname === "/api/access-requests/verify" && req.method === "POST") {
-    await withHandler(res, async () => {
-      sendJson(res, 200, await verifyAccessRequest(await getRequestBody(req)));
-    });
-    return;
-  }
-
   if (url.pathname.startsWith("/api/")) {
     await withHandler(res, async () => {
       const user = await getUserFromRequest(req);
@@ -255,10 +220,6 @@ const server = http.createServer(async (req, res) => {
 
       if (url.pathname === "/api/me" && req.method === "GET") {
         sendJson(res, 200, { user, system: { storage: getStorageInfo() } });
-        return;
-      }
-      if (url.pathname === "/api/auth/change-password" && req.method === "POST") {
-        sendJson(res, 200, await changePassword(user, await getRequestBody(req)));
         return;
       }
       if (url.pathname === "/api/dashboard" && req.method === "GET") {

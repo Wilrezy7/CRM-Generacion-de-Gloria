@@ -7,8 +7,49 @@ import {
   sameWeek,
   sortByDateDesc
 } from "../utils/helpers.js";
-import { comparePassword, hashPassword } from "../utils/security.js";
+import { hashPassword } from "../utils/security.js";
+import { appendAuditEntry } from "./authService.js";
 import { getPermissions, normalizeRole, requirePermission } from "./rbac.js";
+
+const normalizeKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+const ACCESS_MEMBER_ROLE_TO_USER_ROLE = {
+  mentor: "MENTOR",
+  lider: "LIDER",
+  pastor: "PASTOR",
+  secretaria: "SECRETARIA"
+};
+
+const platformRoleFromMemberRole = (memberRole) =>
+  ACCESS_MEMBER_ROLE_TO_USER_ROLE[normalizeKey(memberRole)] || null;
+
+const validateManagedPassword = (password, confirmPassword = password) => {
+  const value = String(password || "");
+  const confirmation = String(confirmPassword || "");
+  if (value.length < 8) {
+    const error = new Error("La contrasena debe tener al menos 8 caracteres.");
+    error.status = 400;
+    throw error;
+  }
+  if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/[0-9]/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
+    const error = new Error("La contrasena debe incluir mayuscula, minuscula, numero y simbolo.");
+    error.status = 400;
+    throw error;
+  }
+  if (value !== confirmation) {
+    const error = new Error("La confirmacion de contrasena no coincide.");
+    error.status = 400;
+    throw error;
+  }
+  return value;
+};
 
 const youthVisibilityFilter = (user) => (youth) =>
   ["ADMIN", "PASTOR", "SECRETARIA"].includes(normalizeRole(user.role)) ||
@@ -45,6 +86,148 @@ const syncUserAssignments = (data) => {
     ...user,
     assignedYouthIds: assignedByUser.get(user.id) || []
   }));
+};
+
+const revokeUserSessions = (data, userId) => {
+  data.userSessions = (data.userSessions || []).map((session) =>
+    session.userId === userId ? { ...session, revokedAt: session.revokedAt || nowIso() } : session
+  );
+};
+
+const findUserForYouth = (data, youth) => {
+  const email = normalizeText(youth.email).toLowerCase();
+  const byEmail = email
+    ? data.users.find((user) => String(user.email || "").toLowerCase() === email)
+    : null;
+  return (
+    data.users.find((user) => user.linkedYouthId === youth.id) ||
+    (byEmail && (byEmail.managedFromYouth || normalizeRole(byEmail.role) !== "ADMIN") ? byEmail : null)
+  );
+};
+
+const syncPlatformUsersFromYouths = (data, { actorId = null, audit = true } = {}) => {
+  data.users = Array.isArray(data.users) ? data.users : [];
+  data.youths = Array.isArray(data.youths) ? data.youths : [];
+  const now = nowIso();
+  const currentYouthIds = new Set(data.youths.map((youth) => youth.id));
+  let changed = false;
+
+  const auditIfNeeded = (action, targetUser, metadata = {}) => {
+    if (!audit) return;
+    appendAuditEntry(data, action, actorId, {
+      targetUserId: targetUser?.id || null,
+      ...metadata
+    });
+  };
+
+  for (const youth of data.youths) {
+    const platformRole = platformRoleFromMemberRole(youth.memberRole);
+    const email = normalizeText(youth.email).toLowerCase();
+    const existing = findUserForYouth(data, youth);
+    const shouldHaveAccess = Boolean(platformRole && email);
+    const emailOwner = email
+      ? data.users.find((user) => String(user.email || "").toLowerCase() === email)
+      : null;
+
+    if (shouldHaveAccess) {
+      if (!existing) {
+        if (emailOwner) {
+          auditIfNeeded("users.member_sync_email_conflict", emailOwner, {
+            youthId: youth.id,
+            email,
+            role: platformRole
+          });
+          continue;
+        }
+        const created = {
+          id: createId("usr"),
+          fullName: youth.fullName,
+          email,
+          passwordHash: "",
+          role: platformRole,
+          assignedYouthIds: [],
+          active: youth.status !== "inactivo",
+          accessBlocked: false,
+          linkedYouthId: youth.id,
+          managedFromYouth: true,
+          lastLogin: null,
+          failedLoginCount: 0,
+          lockedUntil: null,
+          createdAt: now,
+          updatedAt: now
+        };
+        data.users.push(created);
+        auditIfNeeded("users.auto_created_from_member", created, {
+          youthId: youth.id,
+          role: platformRole,
+          passwordAssigned: false
+        });
+        changed = true;
+        continue;
+      }
+
+      const previousRole = normalizeRole(existing.role);
+      const previousActive = existing.active !== false;
+      const nextActive = youth.status !== "inactivo";
+      const updates = {
+        fullName: youth.fullName,
+        email,
+        role: platformRole,
+        active: nextActive,
+        linkedYouthId: youth.id,
+        managedFromYouth: true,
+        updatedAt: now
+      };
+      const needsUpdate = Object.entries(updates).some(([key, value]) => existing[key] !== value);
+      if (needsUpdate) {
+        Object.assign(existing, updates);
+        auditIfNeeded("users.synced_from_member", existing, { youthId: youth.id });
+        changed = true;
+      }
+      if (previousRole !== platformRole) {
+        auditIfNeeded("users.role_changed", existing, {
+          youthId: youth.id,
+          from: previousRole,
+          to: platformRole
+        });
+      }
+      if (previousActive !== nextActive) {
+        auditIfNeeded(nextActive ? "users.activated" : "users.deactivated", existing, {
+          youthId: youth.id,
+          source: "member_sync"
+        });
+        if (!nextActive) revokeUserSessions(data, existing.id);
+      }
+      continue;
+    }
+
+    if (existing?.managedFromYouth && existing.active !== false) {
+      existing.active = false;
+      existing.linkedYouthId = youth.id;
+      existing.updatedAt = now;
+      revokeUserSessions(data, existing.id);
+      auditIfNeeded("users.deactivated", existing, {
+        youthId: youth.id,
+        source: platformRole ? "missing_member_email" : "member_role_removed"
+      });
+      changed = true;
+    }
+  }
+
+  for (const user of data.users) {
+    if (user.managedFromYouth && user.linkedYouthId && !currentYouthIds.has(user.linkedYouthId) && user.active !== false) {
+      user.active = false;
+      user.updatedAt = now;
+      revokeUserSessions(data, user.id);
+      auditIfNeeded("users.deactivated", user, {
+        youthId: user.linkedYouthId,
+        source: "member_removed"
+      });
+      changed = true;
+    }
+  }
+
+  return changed;
 };
 
 const sanitizeUserWithAssignments = (data, user) => ({
@@ -176,13 +359,17 @@ const validateUserPayload = (payload) => {
     error.status = 400;
     throw error;
   }
+  if (!email.includes("@")) {
+    const error = new Error("Correo de usuario invalido.");
+    error.status = 400;
+    throw error;
+  }
   return {
     fullName,
     email,
     role: normalizedRole,
     active: payload.active !== false,
-    emailVerified: payload.emailVerified !== false,
-    mustChangePassword: payload.mustChangePassword === true,
+    accessBlocked: payload.accessBlocked === true,
     assignedYouthIds: Array.isArray(payload.assignedYouthIds)
       ? payload.assignedYouthIds
       : []
@@ -241,9 +428,14 @@ const recalculateAlerts = (data) => {
 export const sanitizeUser = (user) => {
   const { passwordHash, ...safeUser } = user;
   const role = normalizeRole(safeUser.role);
+  const hasPassword = Boolean(passwordHash);
   return {
     ...safeUser,
     role,
+    hasPassword,
+    passwordAssigned: hasPassword,
+    credentialStatus: hasPassword ? "ASIGNADA" : "PENDIENTE",
+    accessBlocked: safeUser.accessBlocked === true,
     permissions: getPermissions(role)
   };
 };
@@ -276,17 +468,19 @@ export const bootstrapSystem = async (payload) => {
     error.status = 400;
     throw error;
   }
+  const adminPassword = validateManagedPassword(password);
 
   const admin = {
     id: createId("usr"),
     fullName,
     email,
-    passwordHash: hashPassword(password),
+    passwordHash: hashPassword(adminPassword),
     role: "ADMIN",
     assignedYouthIds: [],
     active: true,
-    emailVerified: true,
-    mustChangePassword: false,
+    accessBlocked: false,
+    failedLoginCount: 0,
+    lockedUntil: null,
     createdAt: nowIso()
   };
 
@@ -296,29 +490,13 @@ export const bootstrapSystem = async (payload) => {
     updatedAt: nowIso()
   };
   data.users = [admin];
+  appendAuditEntry(data, "users.created", admin.id, {
+    targetUserId: admin.id,
+    role: "ADMIN",
+    source: "bootstrap"
+  });
   await writeDb(data);
   return sanitizeUser(admin);
-};
-
-export const login = async ({ email, password }) => {
-  const data = await readDb();
-  if (!data.users.length) {
-    const error = new Error("El sistema aun no ha sido configurado.");
-    error.status = 403;
-    throw error;
-  }
-  const user = data.users.find((item) => item.email === String(email).toLowerCase());
-  if (!user || !comparePassword(String(password || ""), user.passwordHash)) {
-    const error = new Error("Credenciales invalidas.");
-    error.status = 401;
-    throw error;
-  }
-  if (user.active === false) {
-    const error = new Error("Usuario inactivo. Solicita reactivacion al administrador.");
-    error.status = 403;
-    throw error;
-  }
-  return sanitizeUser(user);
 };
 
 export const getDashboard = async (user) => {
@@ -413,6 +591,7 @@ export const createYouth = async (user, payload) => {
     record.assignedUserId = user.id;
   }
   data.youths.push(record);
+  syncPlatformUsersFromYouths(data, { actorId: user.id });
   syncUserAssignments(data);
   await writeDb(data);
   return record;
@@ -431,6 +610,7 @@ export const updateYouth = async (user, youthId, payload) => {
     next.assignedUserId = user.id;
   }
   data.youths[index] = next;
+  syncPlatformUsersFromYouths(data, { actorId: user.id });
   syncUserAssignments(data);
   await writeDb(data);
   return next;
@@ -452,6 +632,7 @@ export const deleteYouth = async (user, youthId) => {
   }));
   data.interactions = data.interactions.filter((item) => item.youthId !== youthId);
   data.alerts = data.alerts.filter((item) => item.youthId !== youthId);
+  syncPlatformUsersFromYouths(data, { actorId: user.id });
   syncUserAssignments(data);
   await writeDb(data);
   return true;
@@ -580,6 +761,7 @@ export const convertVisitorToYouth = async (user, visitorId) => {
     updatedAt: nowIso()
   };
   data.visitors = visitors;
+  syncPlatformUsersFromYouths(data, { actorId: user.id });
   syncUserAssignments(data);
   await writeDb(data);
   return { visitor: visitors[index], youth };
@@ -754,7 +936,11 @@ export const listUsers = async (user) => {
     throw error;
   }
   const data = await readDb();
+  const changed = syncPlatformUsersFromYouths(data, { actorId: user.id, audit: false });
   syncUserAssignments(data);
+  if (changed) {
+    await writeDb(data);
+  }
   return data.users.map((item) => sanitizeUserWithAssignments(data, item));
 };
 
@@ -771,13 +957,20 @@ export const createUser = async (user, payload) => {
     error.status = 400;
     throw error;
   }
+  const password = normalizeText(payload.password);
   const created = {
     id: createId("usr"),
     ...sanitized,
-    passwordHash: hashPassword(normalizeText(payload.password) || "Cambio123*"),
-    emailVerified: payload.emailVerified !== false,
-    mustChangePassword: true,
-    createdAt: nowIso()
+    passwordHash: password
+      ? hashPassword(validateManagedPassword(password, payload.confirmPassword ?? password))
+      : "",
+    linkedYouthId: payload.linkedYouthId || null,
+    managedFromYouth: payload.managedFromYouth === true,
+    failedLoginCount: 0,
+    lockedUntil: null,
+    lastLogin: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
   };
   data.users.push(created);
   data.youths = data.youths.map((youth) =>
@@ -786,6 +979,16 @@ export const createUser = async (user, payload) => {
       : youth
   );
   syncUserAssignments(data);
+  appendAuditEntry(data, "users.created", user.id, {
+    targetUserId: created.id,
+    role: created.role,
+    passwordAssigned: Boolean(created.passwordHash)
+  });
+  if (created.passwordHash) {
+    appendAuditEntry(data, "users.password_assigned", user.id, {
+      targetUserId: created.id
+    });
+  }
   await writeDb(data);
   return sanitizeUserWithAssignments(data, created);
 };
@@ -805,12 +1008,29 @@ export const updateUser = async (user, userId, payload) => {
   }
   const current = data.users[index];
   const sanitized = validateUserPayload({ ...current, ...payload });
+  if (
+    sanitized.email !== current.email &&
+    data.users.some((item) => item.id !== current.id && item.email === sanitized.email)
+  ) {
+    const error = new Error("Ya existe un usuario con ese correo.");
+    error.status = 400;
+    throw error;
+  }
+  const passwordProvided = Object.prototype.hasOwnProperty.call(payload, "password") && normalizeText(payload.password);
+  const previous = {
+    role: normalizeRole(current.role),
+    active: current.active !== false,
+    accessBlocked: current.accessBlocked === true,
+    hasPassword: Boolean(current.passwordHash)
+  };
+  const passwordHash = passwordProvided
+    ? hashPassword(validateManagedPassword(payload.password, payload.confirmPassword ?? payload.password))
+    : current.passwordHash || "";
   const updated = {
     ...current,
     ...sanitized,
-    passwordHash: payload.password
-      ? hashPassword(normalizeText(payload.password))
-      : current.passwordHash
+    passwordHash,
+    updatedAt: nowIso()
   };
   data.users[index] = updated;
   data.youths = data.youths.map((youth) => {
@@ -822,6 +1042,38 @@ export const updateUser = async (user, userId, payload) => {
     }
     return youth;
   });
+  if (passwordProvided) {
+    updated.failedLoginCount = 0;
+    updated.lockedUntil = null;
+    revokeUserSessions(data, updated.id);
+    appendAuditEntry(data, "users.password_changed", user.id, {
+      targetUserId: updated.id
+    });
+  }
+  if (previous.role !== normalizeRole(updated.role)) {
+    appendAuditEntry(data, "users.role_changed", user.id, {
+      targetUserId: updated.id,
+      from: previous.role,
+      to: normalizeRole(updated.role)
+    });
+  }
+  if (previous.active !== (updated.active !== false)) {
+    if (updated.active === false) revokeUserSessions(data, updated.id);
+    appendAuditEntry(data, updated.active === false ? "users.deactivated" : "users.activated", user.id, {
+      targetUserId: updated.id
+    });
+  }
+  if (previous.accessBlocked !== (updated.accessBlocked === true)) {
+    if (updated.accessBlocked === true) revokeUserSessions(data, updated.id);
+    appendAuditEntry(data, updated.accessBlocked === true ? "users.blocked" : "users.unblocked", user.id, {
+      targetUserId: updated.id
+    });
+  }
+  if (!previous.hasPassword && Boolean(updated.passwordHash) && !passwordProvided) {
+    appendAuditEntry(data, "users.password_assigned", user.id, {
+      targetUserId: updated.id
+    });
+  }
   syncUserAssignments(data);
   await writeDb(data);
   return sanitizeUserWithAssignments(data, data.users[index]);
@@ -852,7 +1104,12 @@ export const deleteUser = async (user, userId) => {
   data.youths = data.youths.map((youth) =>
     youth.assignedUserId === userId ? { ...youth, assignedUserId: null } : youth
   );
+  revokeUserSessions(data, userId);
   syncUserAssignments(data);
+  appendAuditEntry(data, "users.deleted", user.id, {
+    targetUserId: userId,
+    role: target.role
+  });
   await writeDb(data);
   return true;
 };
@@ -989,6 +1246,7 @@ export const importYouthsFromCsv = async (user, payload) => {
     updatedAt: nowIso()
   }));
   data.youths.push(...created);
+  syncPlatformUsersFromYouths(data, { actorId: user.id });
   syncUserAssignments(data);
   await writeDb(data);
   return created;
@@ -1019,6 +1277,7 @@ export const importStructuredMembers = async (payload, options = {}) => {
   data.attendanceSessions = [];
   data.interactions = [];
   data.alerts = [];
+  syncPlatformUsersFromYouths(data, { actorId: options.user?.id || null });
   syncUserAssignments(data);
   await writeDb(data);
   return created;

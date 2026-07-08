@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node backend/src/server.js",
-    "start": "node backend/src/server.js"
+    "start": "node backend/src/server.js",
+    "test": "node --test tests/admin-auth-flow.test.mjs"
   }
 }

@@ -578,10 +578,15 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [authMode, setAuthMode] = useState(
-    new URLSearchParams(window.location.search).get("resetToken") ? "reset" : "login"
-  );
   const [filters, setFilters] = useState({ search: "", status: "" });
+  const [userFilters, setUserFilters] = useState({
+    search: "",
+    role: "",
+    status: "",
+    credential: "",
+    ministry: "",
+    sort: "name"
+  });
   const [reportFilters, setReportFilters] = useState({
     from: "",
     to: "",
@@ -597,6 +602,7 @@ const App = () => {
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [credentialUser, setCredentialUser] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -607,6 +613,38 @@ const App = () => {
   );
   const can = (permission) =>
     user?.permissions?.includes("*") || user?.permissions?.includes(permission);
+  const visibleUsers = useMemo(() => {
+    const search = userFilters.search.trim().toLowerCase();
+    const rows = users
+      .filter((account) => !userFilters.role || account.role === userFilters.role)
+      .filter((account) => {
+        if (!userFilters.status) return true;
+        if (userFilters.status === "active") return account.active !== false && account.accessBlocked !== true;
+        if (userFilters.status === "inactive") return account.active === false;
+        if (userFilters.status === "blocked") return account.accessBlocked === true;
+        return true;
+      })
+      .filter((account) => {
+        if (!userFilters.credential) return true;
+        if (userFilters.credential === "assigned") return account.passwordAssigned || account.hasPassword;
+        if (userFilters.credential === "pending") return !(account.passwordAssigned || account.hasPassword);
+        return true;
+      })
+      .filter((account) => {
+        if (!search) return true;
+        return [account.fullName, account.email, account.role]
+          .join(" ")
+          .toLowerCase()
+          .includes(search);
+      });
+
+    return rows.sort((a, b) => {
+      if (userFilters.sort === "role") return String(a.role).localeCompare(String(b.role));
+      if (userFilters.sort === "status") return String(a.active === false).localeCompare(String(b.active === false));
+      if (userFilters.sort === "lastLogin") return String(b.lastLogin || "").localeCompare(String(a.lastLogin || ""));
+      return String(a.fullName || "").localeCompare(String(b.fullName || ""));
+    });
+  }, [users, userFilters]);
 
   useEffect(() => {
     document.body.classList.toggle("mobile-menu-open", mobileMenuOpen);
@@ -774,83 +812,6 @@ const App = () => {
       setSetupInfo(refreshed.setup || null);
       setError("");
       showMessage("Administrador inicial creado. Ya puedes iniciar sesion.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleForgotPassword = async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setLoading(true);
-    try {
-      await request("/auth/forgot-password", {
-        method: "POST",
-        body: { email: form.get("email") }
-      });
-      setError("");
-      showMessage("Si el correo existe, recibira instrucciones para recuperar el acceso.");
-      setAuthMode("login");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const password = String(form.get("password") || "");
-    const confirmPassword = String(form.get("confirmPassword") || "");
-    if (password !== confirmPassword) {
-      setError("Las contrasenas no coinciden.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await request("/auth/reset-password", {
-        method: "POST",
-        body: {
-          token: new URLSearchParams(window.location.search).get("resetToken"),
-          password
-        }
-      });
-      window.history.replaceState({}, document.title, window.location.pathname);
-      setAuthMode("login");
-      setError("");
-      showMessage("Contrasena actualizada. Ya puedes iniciar sesion.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleChangePassword = async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const newPassword = String(form.get("newPassword") || "");
-    const confirmPassword = String(form.get("confirmPassword") || "");
-    if (newPassword !== confirmPassword) {
-      setError("Las contrasenas no coinciden.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await request("/auth/change-password", {
-        method: "POST",
-        token,
-        body: {
-          currentPassword: form.get("currentPassword"),
-          newPassword
-        }
-      });
-      setUser({ ...user, mustChangePassword: false });
-      setError("");
-      showMessage("Contrasena actualizada correctamente.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1029,15 +990,18 @@ const App = () => {
     const form = new FormData(event.currentTarget);
     const assignedYouthIds = form.getAll("assignedYouthIds");
     const password = String(form.get("password") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
     const payload = {
       fullName: form.get("fullName"),
       email: form.get("email"),
       role: form.get("role"),
       assignedYouthIds,
-      active: form.get("active") === "on"
+      active: form.get("active") === "on",
+      accessBlocked: form.get("accessBlocked") === "on"
     };
     if (password) {
       payload.password = password;
+      payload.confirmPassword = confirmPassword;
     }
     try {
       if (editingUser) {
@@ -1055,11 +1019,30 @@ const App = () => {
     }
   };
 
-  const removeUser = async (id) => {
-    if (!window.confirm("Se eliminara el usuario seleccionado.")) return;
+  const submitCredentialPassword = async (event) => {
+    event.preventDefault();
+    if (!credentialUser) return;
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
     try {
-      await request(`/users/${id}`, { method: "DELETE", token });
-      showMessage("Usuario eliminado.");
+      await request(`/users/${credentialUser.id}`, {
+        method: "PUT",
+        token,
+        body: { password, confirmPassword }
+      });
+      showMessage("Contrasena asignada correctamente.");
+      setCredentialUser(null);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const updateAccountAccess = async (account, patch, message) => {
+    try {
+      await request(`/users/${account.id}`, { method: "PUT", token, body: patch });
+      showMessage(message);
       await refreshAll();
     } catch (err) {
       setError(err.message);
@@ -1736,39 +1719,6 @@ const App = () => {
                     </button>
                   </form>
                 `
-              : authMode === "forgot"
-              ? html`
-                  <form className="space-y-4" onSubmit=${handleForgotPassword}>
-                    <${Input} label="Correo registrado" name="email" type="email" inputMode="email" autoComplete="email" required />
-                    ${error &&
-                    html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
-                    ${notice &&
-                    html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
-                    <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
-                      ${loading ? "Enviando..." : "Enviar recuperacion"}
-                    </button>
-                    <button type="button" className="touch-target w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
-                      Volver al inicio de sesion
-                    </button>
-                  </form>
-                `
-              : authMode === "reset"
-              ? html`
-                  <form className="space-y-4" onSubmit=${handleResetPassword}>
-                    <${Input} label="Nueva contrasena" name="password" type="password" autoComplete="new-password" minLength="8" required />
-                    <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" autoComplete="new-password" minLength="8" required />
-                    ${error &&
-                    html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
-                    ${notice &&
-                    html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
-                    <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
-                      ${loading ? "Actualizando..." : "Cambiar contrasena"}
-                    </button>
-                    <button type="button" className="touch-target w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("login"); }}>
-                      Volver al inicio de sesion
-                    </button>
-                  </form>
-                `
               : html`
                   <form className="space-y-4" onSubmit=${handleLogin}>
                     <${Input} label="Correo" name="email" type="email" inputMode="email" autoComplete="email" required />
@@ -1779,9 +1729,6 @@ const App = () => {
                     html`<div className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">${notice}</div>`}
                     <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white transition hover:translate-y-[-1px] dark:bg-white dark:text-ink" disabled=${loading}>
                       ${loading ? "Ingresando..." : "Entrar al CRM"}
-                    </button>
-                    <button type="button" className="touch-target w-full rounded-2xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900" onClick=${() => { setError(""); setAuthMode("forgot"); }}>
-                      Olvide mi contrasena
                     </button>
                   </form>
                 `}
@@ -2315,36 +2262,102 @@ const App = () => {
 
           ${activeTab === "users" && user.role === "ADMIN" && html`
             <section className="space-y-4">
-              <div className="flex justify-end">
-                <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${() => { setEditingUser(null); setShowUserModal(true); }}>
-                  Nuevo usuario
-                </button>
+              <div className="panel rounded-2xl p-4 shadow-soft">
+                <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_180px_180px_160px_auto]">
+                  <input
+                    className="min-h-[48px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-brand-500 md:text-sm dark:border-slate-700 dark:bg-slate-950"
+                    placeholder="Buscar por nombre, correo o rol"
+                    value=${userFilters.search}
+                    onInput=${(event) => setUserFilters({ ...userFilters, search: event.target.value })}
+                  />
+                  <select className="min-h-[48px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none md:text-sm dark:border-slate-700 dark:bg-slate-950" value=${userFilters.role} onChange=${(event) => setUserFilters({ ...userFilters, role: event.target.value })}>
+                    <option value="">Todos los roles</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="PASTOR">Pastor</option>
+                    <option value="SECRETARIA">Secretaria</option>
+                    <option value="LIDER">Lider</option>
+                    <option value="MENTOR">Mentor</option>
+                  </select>
+                  <select className="min-h-[48px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none md:text-sm dark:border-slate-700 dark:bg-slate-950" value=${userFilters.status} onChange=${(event) => setUserFilters({ ...userFilters, status: event.target.value })}>
+                    <option value="">Todos los estados</option>
+                    <option value="active">Activos</option>
+                    <option value="inactive">Inactivos</option>
+                    <option value="blocked">Bloqueados</option>
+                  </select>
+                  <select className="min-h-[48px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none md:text-sm dark:border-slate-700 dark:bg-slate-950" value=${userFilters.credential} onChange=${(event) => setUserFilters({ ...userFilters, credential: event.target.value })}>
+                    <option value="">Todas las credenciales</option>
+                    <option value="assigned">Con contrasena</option>
+                    <option value="pending">Sin contrasena</option>
+                  </select>
+                  <select className="min-h-[48px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none md:text-sm dark:border-slate-700 dark:bg-slate-950" value=${userFilters.ministry} onChange=${(event) => setUserFilters({ ...userFilters, ministry: event.target.value })}>
+                    <option value="">Todos los ministerios</option>
+                    <option value="generacion-de-gloria">Generacion de Gloria</option>
+                  </select>
+                  <select className="min-h-[48px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none md:text-sm dark:border-slate-700 dark:bg-slate-950" value=${userFilters.sort} onChange=${(event) => setUserFilters({ ...userFilters, sort: event.target.value })}>
+                    <option value="name">Orden: Nombre</option>
+                    <option value="role">Orden: Rol</option>
+                    <option value="status">Orden: Estado</option>
+                    <option value="lastLogin">Orden: Ultimo acceso</option>
+                  </select>
+                  <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-ink" onClick=${() => { setEditingUser(null); setShowUserModal(true); }}>
+                    Nuevo usuario
+                  </button>
+                </div>
               </div>
-              ${users.length
-                ? users.map(
+              ${visibleUsers.length
+                ? visibleUsers.map(
                     (account) => html`
                       <div className="panel rounded-2xl p-5 shadow-soft">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
-                             <div className="flex items-center gap-3">
+                          <div className="min-w-0">
+                             <div className="flex flex-wrap items-center gap-3">
                                <h3 className="font-heading text-lg font-bold">${account.fullName}</h3>
                                <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[account.role])}>${account.role}</span>
                                <span className=${classNames("rounded-full px-3 py-1 text-xs font-bold", badgeClasses[account.active === false ? "inactivo" : "activo"])}>
                                  ${account.active === false ? "inactivo" : "activo"}
                                </span>
+                               <span className=${classNames(
+                                 "rounded-full px-3 py-1 text-xs font-bold",
+                                 account.passwordAssigned || account.hasPassword
+                                   ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                   : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                               )}>
+                                 ${account.passwordAssigned || account.hasPassword ? "Con contrasena" : "Sin contrasena"}
+                               </span>
+                               ${account.accessBlocked &&
+                               html`<span className="rounded-full bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-700 dark:text-rose-300">Bloqueado</span>`}
                              </div>
                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">${account.email}</p>
+                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                               Ultimo acceso: ${account.lastLogin ? new Date(account.lastLogin).toLocaleString("es-CO") : "Sin registro"}
+                             </p>
+                             ${account.managedFromYouth &&
+                             html`<p className="mt-1 text-xs font-semibold text-brand-700 dark:text-brand-300">Sincronizado desde Miembros</p>`}
                            </div>
-                           <div className="flex gap-2">
+                           <div className="flex flex-wrap gap-2 lg:justify-end">
                              <button className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => { setEditingUser(account); setShowUserModal(true); }}>Editar</button>
+                             <button className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white dark:bg-white dark:text-slate-900" onClick=${() => setCredentialUser(account)}>Asignar nueva contrasena</button>
                              ${account.id !== user.id &&
-                             html`<button className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white" onClick=${() => removeUser(account.id)}>Eliminar</button>`}
+                             html`
+                               <button
+                                 className=${classNames("rounded-2xl px-4 py-3 text-sm font-semibold text-white", account.active === false ? "bg-emerald-500" : "bg-amber-500")}
+                                 onClick=${() => updateAccountAccess(account, { active: account.active === false }, account.active === false ? "Usuario activado." : "Usuario desactivado.")}
+                               >
+                                 ${account.active === false ? "Activar" : "Desactivar"}
+                               </button>
+                               <button
+                                 className=${classNames("rounded-2xl px-4 py-3 text-sm font-semibold text-white", account.accessBlocked ? "bg-emerald-600" : "bg-rose-500")}
+                                 onClick=${() => updateAccountAccess(account, { accessBlocked: !account.accessBlocked }, account.accessBlocked ? "Acceso desbloqueado." : "Acceso bloqueado.")}
+                               >
+                                 ${account.accessBlocked ? "Desbloquear" : "Bloquear"}
+                               </button>
+                             `}
                            </div>
                         </div>
                       </div>
                     `
                   )
-                : html`<${EmptyState} title="Sin usuarios" detail="Crea asistentes y asigna jovenes desde este modulo." />`}
+                : html`<${EmptyState} title="Sin usuarios" detail="No hay cuentas que coincidan con los filtros." />`}
             </section>
           `}
         </main>
@@ -2355,31 +2368,6 @@ const App = () => {
         availableTabs=${availableTabs}
         setActiveTab=${setActiveTab}
       />
-
-      ${user.mustChangePassword &&
-      html`
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="panel w-full max-w-md rounded-[24px] p-5 shadow-soft sm:rounded-[28px] sm:p-8">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand-700 dark:text-brand-300">
-              Seguridad de cuenta
-            </p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold">Cambia tu contrasena</h2>
-            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-              El administrador asigno una contrasena temporal. Define una nueva para continuar.
-            </p>
-            <form className="mt-6 space-y-4" onSubmit=${handleChangePassword}>
-              <${Input} label="Contrasena temporal" name="currentPassword" type="password" autoComplete="current-password" required />
-              <${Input} label="Nueva contrasena" name="newPassword" type="password" autoComplete="new-password" minLength="8" required />
-              <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" autoComplete="new-password" minLength="8" required />
-              ${error &&
-              html`<div className="app-error rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">${error}</div>`}
-              <button className="touch-target w-full rounded-2xl bg-ink px-4 py-3 font-semibold text-white dark:bg-white dark:text-ink" disabled=${loading}>
-                ${loading ? "Actualizando..." : "Guardar contrasena"}
-              </button>
-            </form>
-          </div>
-        </div>
-      `}
 
       <${Modal} open=${showVisitorModal} title=${editingVisitor ? "Editar visitante" : "Nuevo visitante"} onClose=${() => { setShowVisitorModal(false); setEditingVisitor(null); }}>
         <form className="grid gap-4 md:grid-cols-2" onSubmit=${submitVisitor}>
@@ -2421,6 +2409,8 @@ const App = () => {
             <option value="Miembro">Miembro</option>
             <option value="Lider">Lider</option>
             <option value="Mentor">Mentor</option>
+            <option value="Pastor">Pastor</option>
+            <option value="Secretaria">Secretaria</option>
             <option value="Diacono">Diacono</option>
           </${Select}>
           <${Input} label="Direccion" name="address" autoComplete="street-address" defaultValue=${editingYouth?.address || ""} />
@@ -2514,11 +2504,21 @@ const App = () => {
             <option value="LIDER">Lider</option>
             <option value="MENTOR">Mentor</option>
           </${Select}>
-          <${Input} label="Contrasena" name="password" type="password" autoComplete="new-password" defaultValue=${editingUser ? "" : "Cambio123*"} placeholder=${editingUser ? "Dejar vacia para conservar" : ""} />
+          ${!editingUser &&
+          html`
+            <${Input} label="Contrasena inicial" name="password" type="password" autoComplete="new-password" placeholder="Opcional: asignar ahora" />
+            <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" autoComplete="new-password" placeholder="Repite la contrasena" />
+          `}
           <label className="md:col-span-2 flex items-center gap-3 rounded-2xl bg-slate-100/90 px-4 py-4 dark:bg-slate-900">
             <input type="checkbox" name="active" defaultChecked=${editingUser ? editingUser.active !== false : true} className="h-5 w-5 accent-[#84974a]" />
             <span className="text-sm font-medium">Usuario activo</span>
           </label>
+          <label className="md:col-span-2 flex items-center gap-3 rounded-2xl bg-slate-100/90 px-4 py-4 dark:bg-slate-900">
+            <input type="checkbox" name="accessBlocked" defaultChecked=${editingUser?.accessBlocked === true} className="h-5 w-5 accent-[#84974a]" />
+            <span className="text-sm font-medium">Acceso bloqueado</span>
+          </label>
+          ${editingUser?.managedFromYouth &&
+          html`<div className="md:col-span-2 rounded-2xl bg-brand-500/10 px-4 py-3 text-sm text-brand-800 dark:text-brand-300">Este usuario se sincroniza automaticamente desde el modulo Miembros.</div>`}
           <div className="md:col-span-2">
             <p className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">Asignar jovenes</p>
             <div className="grid max-h-64 gap-3 overflow-auto rounded-2xl bg-slate-100/90 p-4 dark:bg-slate-900">
@@ -2534,6 +2534,19 @@ const App = () => {
           </div>
           <div className="md:col-span-2 flex justify-end">
             <button className="rounded-2xl bg-brand-600 px-5 py-3 font-semibold text-white">${editingUser ? "Guardar usuario" : "Crear usuario"}</button>
+          </div>
+        </form>
+      </${Modal}>
+
+      <${Modal} open=${Boolean(credentialUser)} title=${credentialUser ? `Asignar nueva contrasena a ${credentialUser.fullName}` : "Asignar nueva contrasena"} onClose=${() => setCredentialUser(null)}>
+        <form className="space-y-4" onSubmit=${submitCredentialPassword}>
+          <div className="rounded-2xl bg-slate-100/90 px-4 py-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+            La contrasena actual nunca se muestra. Al asignar una nueva, se invalidan sesiones abiertas de este usuario.
+          </div>
+          <${Input} label="Nueva contrasena" name="password" type="password" autoComplete="new-password" minLength="8" required />
+          <${Input} label="Confirmar contrasena" name="confirmPassword" type="password" autoComplete="new-password" minLength="8" required />
+          <div className="flex justify-end">
+            <button className="rounded-2xl bg-brand-600 px-5 py-3 font-semibold text-white">Guardar contrasena</button>
           </div>
         </form>
       </${Modal}>

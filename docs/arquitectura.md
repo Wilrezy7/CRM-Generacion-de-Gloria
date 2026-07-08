@@ -9,11 +9,21 @@ El sistema se divide en dos capas:
 
 ## Flujo de autenticacion
 
-1. El usuario inicia sesion en `POST /api/auth/login`.
-2. El servidor valida credenciales contra la base local.
-3. Se entrega un token firmado.
-4. El frontend guarda el token en `localStorage`.
-5. Las rutas protegidas usan `Authorization: Bearer <token>`.
+1. El Administrador General crea o habilita la cuenta en el modulo `Usuarios`.
+2. El Administrador asigna una contrasena inicial o una nueva contrasena manualmente.
+3. El usuario inicia sesion en `POST /api/auth/login` con correo y contrasena asignada.
+4. El servidor valida que la cuenta este activa, no bloqueada y tenga contrasena asignada.
+5. Se entrega JWT propio y refresh token de sesion.
+6. Las rutas protegidas usan `Authorization: Bearer <token>`.
+
+No existe recuperacion de contrasena por correo, enlaces de verificacion ni registro externo. Las credenciales son administradas centralmente.
+
+## Sincronizacion Miembros - Usuarios
+
+- Si un miembro adquiere rol `Mentor`, `Lider`, `Pastor` o `Secretaria`, el backend crea o actualiza su cuenta de usuario usando su correo.
+- La cuenta queda activa segun el estado del miembro, pero sin acceso hasta que el Administrador asigne contrasena.
+- Si el miembro pierde un rol con acceso, la cuenta no se elimina: queda inactiva para conservar historial.
+- Cambios de nombre, correo, estado y rol se reflejan automaticamente en `Usuarios`.
 
 ## Reglas de acceso
 
@@ -22,18 +32,23 @@ El sistema se divide en dos capas:
   - gestiona usuarios
   - elimina jovenes
   - importa y exporta base de datos
-- `ASISTENTE`:
-  - solo ve jovenes asignados
-  - registra asistencia y seguimiento de sus asignados
-  - no accede a gestion global de usuarios
+- `PASTOR`:
+  - vision global, reportes, estadisticas y seguimiento pastoral
+- `SECRETARIA`:
+  - gestion administrativa, miembros, asistencia, consolidacion e informes
+- `LIDER`:
+  - grupos asignados, asistencia, consolidacion y seguimiento
+- `MENTOR`:
+  - miembros asignados, visitas, llamadas y observaciones
 
 ## Persistencia
 
 La informacion se guarda en:
 
-- `backend/src/data/database.json`
+- Supabase remoto en `public.crm_state` cuando `SUPABASE_ENFORCE_REMOTE=true`
+- `backend/src/data/database.json` solo como fallback local de desarrollo
 
-Si el archivo no existe, el sistema lo crea automaticamente con datos semilla.
+Si el archivo local no existe en desarrollo, el sistema lo crea automaticamente con datos semilla.
 
 ## Generacion de alertas
 
