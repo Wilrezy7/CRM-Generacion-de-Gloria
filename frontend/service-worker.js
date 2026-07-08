@@ -1,4 +1,4 @@
-const CACHE_NAME = "gdg-crm-v1";
+const CACHE_NAME = "gdg-crm-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -26,6 +26,17 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+const shouldUseNetworkFirst = (request, url) =>
+  request.mode === "navigate" ||
+  ["script", "style", "worker"].includes(request.destination) ||
+  ["/", "/index.html", "/app.js", "/styles.css", "/manifest.webmanifest"].includes(url.pathname);
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -43,6 +54,21 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => caches.match("/offline.html"))
+    );
+    return;
+  }
+
+  if (url.origin === self.location.origin && shouldUseNetworkFirst(request, url)) {
+    event.respondWith(
+      fetch(request, { cache: "no-cache" })
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || Response.error()))
     );
     return;
   }
